@@ -1,0 +1,174 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  release:
+    types: [published]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run linting (if available)
+      run: npm run lint --if-present
+      continue-on-error: true
+    
+    - name: Run tests (if available)
+      run: npm test --if-present
+      continue-on-error: true
+    
+    - name: Check build
+      run: npm run build --if-present
+      continue-on-error: true
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run security audit
+      run: npm audit --audit-level=high
+      continue-on-error: true
+    
+    - name: Check for vulnerabilities
+      run: npm audit fix --dry-run
+      continue-on-error: true
+
+  build-electron:
+    runs-on: ${{ matrix.os }}
+    needs: [test]
+    if: github.event_name == 'release' || github.ref == 'refs/heads/main'
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Install electron-builder
+      run: npm install -g electron-builder
+    
+    - name: Build Electron app (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: npm run build -- --linux
+      continue-on-error: true
+    
+    - name: Build Electron app (Windows)
+      if: matrix.os == 'windows-latest'
+      run: npm run build -- --win
+      continue-on-error: true
+    
+    - name: Build Electron app (macOS)
+      if: matrix.os == 'macos-latest'
+      run: npm run build -- --mac
+      continue-on-error: true
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: electron-builds-${{ matrix.os }}
+        path: dist/
+        retention-days: 30
+
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Check package.json validity
+      run: npm ls --depth=0
+    
+    - name: Check for outdated packages
+      run: npm outdated
+      continue-on-error: true
+    
+    - name: Analyze bundle size (if available)
+      run: |
+        if [ -f "package.json" ] && grep -q "analyze" package.json; then
+          npm run analyze
+        else
+          echo "No bundle analyzer configured"
+        fi
+      continue-on-error: true
+
+  performance-check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Check package size
+      run: |
+        echo "Package contents:"
+        ls -la
+        echo "Node modules size:"
+        du -sh node_modules/ || echo "No node_modules directory"
+        echo "Total project size:"
+        du -sh . --exclude=node_modules
+    
+    - name: Memory usage check
+      run: |
+        echo "System memory info:"
+        free -h || echo "Memory info not available on this system"

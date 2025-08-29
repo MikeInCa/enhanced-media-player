@@ -1,0 +1,94 @@
+name: Release Build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  build-and-release:
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            artifact: '*.AppImage'
+          - os: windows-latest
+            platform: windows
+            artifact: '*.exe'
+          - os: macos-latest
+            platform: mac
+            artifact: '*.dmg'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Install electron-builder
+      run: npm install -g electron-builder
+    
+    - name: Build for ${{ matrix.platform }}
+      run: |
+        if [ "${{ matrix.platform }}" == "linux" ]; then
+          npm run build -- --linux
+        elif [ "${{ matrix.platform }}" == "windows" ]; then
+          npm run build -- --win
+        elif [ "${{ matrix.platform }}" == "mac" ]; then
+          npm run build -- --mac
+        fi
+      shell: bash
+    
+    - name: List build artifacts
+      run: |
+        echo "Build artifacts:"
+        ls -la dist/ || echo "No dist directory found"
+        find . -name "*.exe" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" | head -10
+      shell: bash
+    
+    - name: Upload Release Assets
+      if: github.event_name == 'release'
+      uses: actions/upload-artifact@v4
+      with:
+        name: enhanced-media-player-${{ matrix.platform }}
+        path: |
+          dist/*.exe
+          dist/*.dmg
+          dist/*.AppImage
+          dist/*.deb
+          dist/*.rpm
+        retention-days: 90
+    
+    - name: Create checksums
+      if: github.event_name == 'release'
+      run: |
+        cd dist
+        for file in *.exe *.dmg *.AppImage *.deb *.rpm; do
+          if [ -f "$file" ]; then
+            sha256sum "$file" > "$file.sha256"
+          fi
+        done 2>/dev/null || true
+      shell: bash
+    
+    - name: Upload checksums
+      if: github.event_name == 'release'
+      uses: actions/upload-artifact@v4
+      with:
+        name: checksums-${{ matrix.platform }}
+        path: dist/*.sha256
+        retention-days: 90
