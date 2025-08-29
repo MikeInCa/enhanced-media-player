@@ -1,0 +1,1029 @@
+bash# Create a clean production version
+echo "🧹 Cleaning up and creating production version..."
+
+# Create a new clean folder
+mkdir -p ../ElectronMediaPlayer-Clean
+cd ../ElectronMediaPlayer-Clean
+
+echo "📦 Creating clean package.json..."
+cat > package.json << 'EOF'
+{
+  "name": "enhanced-media-player",
+  "version": "1.0.0",
+  "description": "Enhanced Electron Media Player with audio, video, image support, playlists, and keyboard controls",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --enable-logging",
+    "build": "electron-builder",
+    "dist": "npm run build"
+  },
+  "keywords": ["electron", "media", "player", "video", "audio", "playlist"],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.yourname.enhanced-media-player",
+    "productName": "Enhanced Media Player",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js", 
+      "index.html",
+      "styles.css"
+    ],
+    "mac": {
+      "category": "public.app-category.video"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
+EOF
+
+echo "🔧 Copying main.js (production version)..."
+cat > main.js << 'EOF'
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const path = require('path');
+const fs = require('fs').promises;
+
+let mainWindow;
+
+const supportedFormats = {
+  video: ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v', '.flv', '.wmv'],
+  audio: ['.mp3', '.wav', '.ogg', '.aac', '.flac', '.m4a', '.wma'],
+  image: ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.tiff']
+};
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    minWidth: 1000,
+    minHeight: 700,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: false
+    },
+    icon: path.join(__dirname, 'assets/icon.png'), // Add icon if you have one
+    show: false
+  });
+
+  mainWindow.loadFile('index.html');
+  
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    // Remove dev tools for production
+    // mainWindow.webContents.openDevTools();
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+function getAllSupportedExtensions() {
+  return [
+    ...supportedFormats.video.map(ext => ext.slice(1)),
+    ...supportedFormats.audio.map(ext => ext.slice(1)),
+    ...supportedFormats.image.map(ext => ext.slice(1))
+  ];
+}
+
+function isSupportedFile(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return getAllSupportedExtensions().includes(ext.slice(1));
+}
+
+async function scanFolderForMedia(folderPath, maxDepth = 2, currentDepth = 0) {
+  const mediaFiles = [];
+  
+  if (currentDepth >= maxDepth) return mediaFiles;
+
+  try {
+    const entries = await fs.readdir(folderPath, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      const fullPath = path.join(folderPath, entry.name);
+      
+      try {
+        if (entry.isDirectory() && !entry.name.startsWith('.')) {
+          const subFiles = await scanFolderForMedia(fullPath, maxDepth, currentDepth + 1);
+          mediaFiles.push(...subFiles);
+        } else if (entry.isFile() && isSupportedFile(fullPath)) {
+          await fs.access(fullPath);
+          mediaFiles.push(fullPath);
+        }
+      } catch (error) {
+        // Silently skip inaccessible files in production
+      }
+    }
+  } catch (error) {
+    console.error(`Error scanning folder ${folderPath}:`, error);
+  }
+
+  return mediaFiles.sort();
+}
+
+// IPC Handlers
+ipcMain.handle('select-files', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'All Media', extensions: getAllSupportedExtensions() },
+        { name: 'Videos', extensions: supportedFormats.video.map(ext => ext.slice(1)) },
+        { name: 'Audio', extensions: supportedFormats.audio.map(ext => ext.slice(1)) },
+        { name: 'Images', extensions: supportedFormats.image.map(ext => ext.slice(1)) },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      title: 'Select Media Files'
+    });
+
+    if (result.canceled) return [];
+
+    const validFiles = [];
+    for (const filePath of result.filePaths) {
+      try {
+        await fs.access(filePath);
+        if (isSupportedFile(filePath)) {
+          validFiles.push(filePath);
+        }
+      } catch (error) {
+        // Skip invalid files
+      }
+    }
+
+    return validFiles;
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('select-folder', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Select Folder Containing Media'
+    });
+
+    if (result.canceled || result.filePaths.length === 0) return [];
+
+    const folderPath = result.filePaths[0];
+    const mediaFiles = await scanFolderForMedia(folderPath);
+    
+    return mediaFiles;
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('show-in-folder', async (event, filePath) => {
+  try {
+    shell.showItemInFolder(filePath);
+    return { success: true };
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+app.whenReady().then(() => {
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+EOF
+
+echo "🔗 Copying preload.js..."
+cat > preload.js << 'EOF'
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  selectFiles: () => ipcRenderer.invoke('select-files'),
+  selectFolder: () => ipcRenderer.invoke('select-folder'),
+  showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath)
+});
+EOF
+
+echo "🎨 Copying styles.css..."
+cp ../ElectronMediaPlayer/styles.css .
+
+echo "🌐 Copying production HTML (without debug interface)..."
+cat > index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Enhanced Media Player</title>
+    <link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        .enhanced-header {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .playback-controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 15px 0;
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+        }
+        .playlist-controls {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .thumbnail {
+            width: 40px;
+            height: 40px;
+            object-fit: cover;
+            border-radius: 5px;
+            margin-right: 10px;
+            border: 1px solid #666;
+        }
+        .queue-item-enhanced {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            margin: 8px 0;
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        .queue-item-enhanced:hover {
+            background: rgba(255,255,255,0.2);
+            transform: translateX(5px);
+        }
+        .queue-item-enhanced.current {
+            background: rgba(102,126,234,0.4);
+            border-left-color: #667eea;
+        }
+        .queue-item-enhanced.video { border-left-color: #ff6b6b; }
+        .queue-item-enhanced.audio { border-left-color: #95e1d3; }
+        .queue-item-enhanced.image { border-left-color: #4ecdc4; }
+        .progress-info {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        .keyboard-help {
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 11px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="enhanced-header">
+        <h1>🎬 Enhanced Media Player</h1>
+        <p>Professional media player with playlists, keyboard controls & thumbnails</p>
+    </div>
+
+    <div class="container">
+        <div class="main-section">
+            <div class="controls">
+                <div class="controls-grid">
+                    <button class="btn" onclick="selectFiles()">📄 Select Files</button>
+                    <button class="btn" onclick="selectFolder()">📁 Select Folder</button>
+                    <button class="btn" onclick="clearQueue()">🗑️ Clear Queue</button>
+                    <button class="btn" onclick="shuffleQueue()">🔀 Shuffle</button>
+                </div>
+                
+                <div class="playlist-controls">
+                    <button class="btn" onclick="savePlaylist()">💾 Save Playlist</button>
+                    <button class="btn" onclick="loadPlaylist()">📂 Load Playlist</button>
+                    <input type="file" id="playlistInput" accept=".json" style="display:none;" onchange="handlePlaylistFile(event)">
+                </div>
+                
+                <div class="playback-controls">
+                    <button class="btn" onclick="previousMedia()">⏮️ Previous</button>
+                    <button class="btn" onclick="togglePlayPause()" id="playPauseBtn">⏯️ Play/Pause</button>
+                    <button class="btn" onclick="nextMedia()">⏭️ Next</button>
+                    <button class="btn" onclick="toggleMute()" id="muteBtn">🔊 Mute</button>
+                </div>
+                
+                <div class="keyboard-help">
+                    <strong>Keyboard Controls:</strong> 
+                    Space=Play/Pause | ←/→=Previous/Next | ↑/↓=Volume | M=Mute | F=Fullscreen
+                </div>
+            </div>
+
+            <div class="media-player">
+                <div class="media-display" id="mediaDisplay">
+                    <div class="no-media">No media selected<br><small>Use controls above to get started</small></div>
+                </div>
+                <div class="progress-info" id="progressInfo"></div>
+            </div>
+        </div>
+
+        <div class="queue-section">
+            <div class="queue-header">
+                📋 Media Queue <span id="queueCount">(0 items)</span>
+            </div>
+            <div class="queue-list" id="queueList">No files loaded</div>
+        </div>
+    </div>
+
+    <script>
+        let mediaQueue = [];
+        let currentIndex = -1;
+        let currentMedia = null;
+        let isPlaying = false;
+
+        function getBasename(path) {
+            return path.split('/').pop().split('\\').pop();
+        }
+
+        function getExtname(path) {
+            const name = getBasename(path);
+            const dot = name.lastIndexOf('.');
+            return dot === -1 ? '' : name.substring(dot).toLowerCase();
+        }
+
+        function createFileUrl(filePath) {
+            const parts = filePath.split('/');
+            const encodedParts = parts.map(part => {
+                if (part === '') return '';
+                return encodeURIComponent(part);
+            });
+            const encodedPath = encodedParts.join('/');
+            return `file://${encodedPath}`;
+        }
+
+        function getMediaType(filePath) {
+            const ext = getExtname(filePath);
+            if (['.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v', '.flv', '.wmv'].includes(ext)) return 'video';
+            if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.tiff'].includes(ext)) return 'image';
+            if (['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.wma'].includes(ext)) return 'audio';
+            return 'unknown';
+        }
+
+        async function selectFiles() {
+            try {
+                const files = await window.electronAPI.selectFiles();
+                if (files.length === 0) return;
+                addFilesToQueue(files);
+            } catch (error) {
+                alert('Error selecting files: ' + error.message);
+            }
+        }
+
+        async function selectFolder() {
+            try {
+                const files = await window.electronAPI.selectFolder();
+                if (files.length === 0) {
+                    alert('No media files found in folder');
+                    return;
+                }
+                addFilesToQueue(files);
+            } catch (error) {
+                alert('Error scanning folder: ' + error.message);
+            }
+        }
+
+        function addFilesToQueue(files) {
+            files.forEach(file => {
+                const name = getBasename(file);
+                const type = getMediaType(file);
+                const url = createFileUrl(file);
+                
+                mediaQueue.push({
+                    name: name,
+                    path: file,
+                    type: type,
+                    url: url,
+                    id: Date.now() + Math.random(),
+                    duration: null,
+                    thumbnail: null
+                });
+            });
+            
+            updateDisplay();
+            generateThumbnails();
+            
+            if (currentIndex === -1 && mediaQueue.length > 0) {
+                loadMedia(0);
+            }
+        }
+
+        async function generateThumbnails() {
+            for (let i = 0; i < mediaQueue.length; i++) {
+                const item = mediaQueue[i];
+                if (item.type === 'video' && !item.thumbnail) {
+                    try {
+                        const thumbnail = await createVideoThumbnail(item.url);
+                        item.thumbnail = thumbnail;
+                        updateDisplay();
+                    } catch (error) {
+                        // Silently fail for thumbnails
+                    }
+                }
+            }
+        }
+
+        function createVideoThumbnail(videoUrl) {
+            return new Promise((resolve, reject) => {
+                const video = document.createElement('video');
+                video.crossOrigin = 'anonymous';
+                video.currentTime = 1;
+                
+                video.addEventListener('loadeddata', () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 160;
+                        canvas.height = 90;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL());
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+                
+                video.addEventListener('error', reject);
+                video.src = videoUrl;
+            });
+        }
+
+        function loadMedia(index) {
+            if (index < 0 || index >= mediaQueue.length) return;
+            
+            currentIndex = index;
+            const item = mediaQueue[index];
+            const display = document.getElementById('mediaDisplay');
+            
+            // Stop current media
+            if (currentMedia) {
+                if (currentMedia.pause) currentMedia.pause();
+                currentMedia = null;
+                isPlaying = false;
+            }
+            
+            display.innerHTML = '<div class="loading">Loading...</div>';
+            
+            if (item.type === 'video') {
+                const video = document.createElement('video');
+                video.controls = true;
+                video.style.cssText = 'width:100%;height:100%;background:#000;';
+                video.src = item.url;
+                
+                video.addEventListener('loadedmetadata', () => {
+                    item.duration = video.duration;
+                });
+                
+                video.addEventListener('timeupdate', () => {
+                    updateProgressInfo(video.currentTime, video.duration);
+                });
+                
+                video.addEventListener('play', () => {
+                    isPlaying = true;
+                    updatePlayPauseButton();
+                });
+                
+                video.addEventListener('pause', () => {
+                    isPlaying = false;
+                    updatePlayPauseButton();
+                });
+                
+                video.addEventListener('ended', () => {
+                    nextMedia();
+                });
+                
+                video.addEventListener('error', () => {
+                    display.innerHTML = `<div class="error">❌ Could not load video<br><small>${item.name}</small></div>`;
+                });
+                
+                display.innerHTML = '';
+                display.appendChild(video);
+                currentMedia = video;
+                
+            } else if (item.type === 'audio') {
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.style.cssText = 'width:100%;margin-top:50px;';
+                audio.src = item.url;
+                
+                audio.addEventListener('loadedmetadata', () => {
+                    item.duration = audio.duration;
+                });
+                
+                audio.addEventListener('timeupdate', () => {
+                    updateProgressInfo(audio.currentTime, audio.duration);
+                });
+                
+                audio.addEventListener('play', () => {
+                    isPlaying = true;
+                    updatePlayPauseButton();
+                });
+                
+                audio.addEventListener('pause', () => {
+                    isPlaying = false;
+                    updatePlayPauseButton();
+                });
+                
+                audio.addEventListener('ended', () => {
+                    nextMedia();
+                });
+                
+                audio.addEventListener('error', () => {
+                    display.innerHTML = `<div class="error">❌ Could not load audio<br><small>${item.name}</small></div>`;
+                });
+                
+                display.innerHTML = '';
+                display.appendChild(audio);
+                currentMedia = audio;
+                
+            } else if (item.type === 'image') {
+                const img = document.createElement('img');
+                img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+                img.src = item.url;
+                
+                img.addEventListener('load', () => {
+                    updateProgressInfo(null, null, `${img.naturalWidth}x${img.naturalHeight}`);
+                });
+                
+                img.addEventListener('error', () => {
+                    display.innerHTML = `<div class="error">❌ Could not load image<br><small>${item.name}</small></div>`;
+                });
+                
+                display.innerHTML = '';
+                display.appendChild(img);
+                currentMedia = img;
+            }
+            
+            updateDisplay();
+        }
+
+        function togglePlayPause() {
+            if (!currentMedia || !currentMedia.play) return;
+            
+            if (isPlaying) {
+                currentMedia.pause();
+            } else {
+                currentMedia.play();
+            }
+        }
+
+        function previousMedia() {
+            if (currentIndex > 0) {
+                loadMedia(currentIndex - 1);
+            }
+        }
+
+        function nextMedia() {
+            if (currentIndex < mediaQueue.length - 1) {
+                loadMedia(currentIndex + 1);
+            }
+        }
+
+        function toggleMute() {
+            if (!currentMedia || currentMedia.muted === undefined) return;
+            
+            currentMedia.muted = !currentMedia.muted;
+            document.getElementById('muteBtn').textContent = currentMedia.muted ? '🔇 Unmute' : '🔊 Mute';
+        }
+
+        function updatePlayPauseButton() {
+            const btn = document.getElementById('playPauseBtn');
+            btn.textContent = isPlaying ? '⏸️ Pause' : '▶️ Play';
+        }
+
+        function updateProgressInfo(currentTime, duration, extra = '') {
+            const info = document.getElementById('progressInfo');
+            if (currentTime !== null && duration) {
+                const current = formatTime(currentTime);
+                const total = formatTime(duration);
+                const percent = Math.round((currentTime / duration) * 100);
+                info.textContent = `${current} / ${total} (${percent}%) ${extra}`;
+            } else if (extra) {
+                info.textContent = extra;
+            } else {
+                info.textContent = '';
+            }
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function shuffleQueue() {
+            if (mediaQueue.length < 2) return;
+            
+            const currentItem = mediaQueue[currentIndex];
+            
+            for (let i = mediaQueue.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [mediaQueue[i], mediaQueue[j]] = [mediaQueue[j], mediaQueue[i]];
+            }
+            
+            currentIndex = mediaQueue.findIndex(item => item.id === currentItem.id);
+            updateDisplay();
+        }
+
+        function savePlaylist() {
+            if (mediaQueue.length === 0) {
+                alert('No items in queue to save');
+                return;
+            }
+            
+            const playlist = {
+                name: `Playlist ${new Date().toLocaleDateString()}`,
+                created: new Date().toISOString(),
+                items: mediaQueue.map(item => ({
+                    name: item.name,
+                    path: item.path,
+                    type: item.type
+                }))
+            };
+            
+            const blob = new Blob([JSON.stringify(playlist, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `playlist_${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function loadPlaylist() {
+            document.getElementById('playlistInput').click();
+        }
+
+        function handlePlaylistFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const playlist = JSON.parse(e.target.result);
+                    clearQueue();
+                    
+                    const validItems = [];
+                    playlist.items.forEach(item => {
+                        validItems.push(item.path);
+                    });
+                    
+                    addFilesToQueue(validItems);
+                    alert(`✅ Loaded playlist: ${validItems.length} items`);
+                    
+                } catch (error) {
+                    alert('Error loading playlist file');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function clearQueue() {
+            if (currentMedia && currentMedia.pause) currentMedia.pause();
+            mediaQueue = [];
+            currentIndex = -1;
+            currentMedia = null;
+            isPlaying = false;
+            document.getElementById('mediaDisplay').innerHTML = '<div class="no-media">No media selected</div>';
+            document.getElementById('progressInfo').textContent = '';
+            updateDisplay();
+        }
+
+        function updateDisplay() {
+            const list = document.getElementById('queueList');
+            const count = document.getElementById('queueCount');
+            
+            count.textContent = `(${mediaQueue.length} items)`;
+            
+            if (mediaQueue.length === 0) {
+                list.innerHTML = 'No files loaded';
+                return;
+            }
+            
+            let html = '';
+            mediaQueue.forEach((item, i) => {
+                const current = i === currentIndex ? 'current' : '';
+                const icon = item.type === 'video' ? '🎬' : item.type === 'audio' ? '🎵' : '🖼️';
+                const thumbnail = item.thumbnail ? `<img src="${item.thumbnail}" class="thumbnail">` : '';
+                const duration = item.duration ? ` (${formatTime(item.duration)})` : '';
+                
+                html += `
+                    <div class="queue-item-enhanced ${current} ${item.type}" onclick="loadMedia(${i})">
+                        ${thumbnail}
+                        <div style="flex: 1;">
+                            <div style="font-weight: bold;">${icon} ${item.name}</div>
+                            <div style="font-size: 11px; opacity: 0.7;">${item.type}${duration}</div>
+                        </div>
+                        <button onclick="event.stopPropagation(); removeFromQueue(${i})" 
+                                style="background:#ff6b6b;color:white;border:none;padding:4px 8px;border-radius:4px;font-size:10px;">
+                            Remove
+                        </button>
+                    </div>
+                `;
+            });
+            list.innerHTML = html;
+        }
+
+        function removeFromQueue(index) {
+            const item = mediaQueue[index];
+            mediaQueue.splice(index, 1);
+            
+            if (currentIndex >= index) currentIndex--;
+            if (mediaQueue.length === 0) {
+                clearQueue();
+            } else if (currentIndex < 0 && mediaQueue.length > 0) {
+                loadMedia(0);
+            } else {
+                updateDisplay();
+            }
+        }
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            
+            switch (e.code) {
+                case 'Space':
+                    e.preventDefault();
+                    togglePlayPause();
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    previousMedia();
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    nextMedia();
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (currentMedia && currentMedia.volume !== undefined) {
+                        currentMedia.volume = Math.min(1, currentMedia.volume + 0.1);
+                    }
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (currentMedia && currentMedia.volume !== undefined) {
+                        currentMedia.volume = Math.max(0, currentMedia.volume - 0.1);
+                    }
+                    break;
+                case 'KeyM':
+                    e.preventDefault();
+                    toggleMute();
+                    break;
+                case 'KeyF':
+                    e.preventDefault();
+                    if (currentMedia && currentMedia.requestFullscreen) {
+                        currentMedia.requestFullscreen();
+                    }
+                    break;
+            }
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Production ready - no debug logs
+        });
+    </script>
+</body>
+</html>
+EOF
+
+echo "📝 Creating README.md..."
+cat > README.md << 'EOF'
+# Enhanced Media Player
+
+A professional Electron-based media player with support for videos, audio, and images.
+
+## Features
+
+🎬 **Video Support**: MP4, WebM, MOV, AVI, MKV, M4V, FLV, WMV
+🎵 **Audio Support**: MP3, WAV, OGG, AAC, FLAC, M4A, WMA  
+🖼️ **Image Support**: JPG, PNG, GIF, BMP, WebP, SVG, TIFF
+📁 **Folder Scanning**: Recursively scan folders for media files
+💾 **Playlist Management**: Save and load playlists as JSON files
+🖼️ **Video Thumbnails**: Auto-generated previews for video files
+⌨️ **Keyboard Controls**: Full keyboard navigation and control
+🎛️ **Advanced Controls**: Play/pause, next/previous, volume, mute, shuffle
+
+## Keyboard Shortcuts
+
+- **Space**: Play/Pause
+- **← →**: Previous/Next media
+- **↑ ↓**: Volume up/down
+- **M**: Mute/Unmute
+- **F**: Fullscreen (videos)
+
+## Installation
+
+1. Install dependencies:
+   ```bash
+   npm install
+
+Run the application:
+bashnpm start
+
+
+Building for Production
+To create distributable packages:
+bashnpm install electron-builder --save-dev
+npm run build
+Usage
+
+Select Files: Choose individual media files
+Select Folder: Scan entire folders for media
+Playlists: Save your current queue or load saved playlists
+Keyboard Controls: Use keyboard shortcuts for quick navigation
+Queue Management: Click items to play, remove unwanted files, shuffle order
+
+License
+MIT License
+EOF
+echo "📦 Installing dependencies..."
+npm install
+echo ""
+echo "🎉 CLEAN PRODUCTION VERSION CREATED!"
+echo ""
+echo "📁 Location: $(pwd)"
+echo ""
+echo "📋 Essential files included:"
+echo "  ✅ package.json (production config)"
+echo "  ✅ main.js (optimized, no dev tools)"
+echo "  ✅ preload.js (security layer)"
+echo "  ✅ index.html (clean, no debug interface)"
+echo "  ✅ styles.css (all styling)"
+echo "  ✅ README.md (documentation)"
+echo ""
+echo "🗑️ Removed unnecessary files:"
+echo "  ❌ Debug interface"
+echo "  ❌ Development console logs"
+echo "  ❌ Backup files"
+echo "  ❌ Test versions"
+echo ""
+echo "🚀 To run the clean version:"
+echo "  npm start"
+echo ""
+echo "📦 To build distributable apps:"
+echo "  npm install electron-builder --save-dev"
+echo "  npm run build"
+echo ""
+echo "💾 Your clean, production-ready media player is ready!"
+
+This script creates a completely clean, production-ready version with:
+
+## ✅ **Essential Files Only:**
+- `package.json` - Production configuration
+- `main.js` - Clean main process (no dev tools)
+- `preload.js` - Security layer
+- `index.html` - Clean UI (no debug interface)
+- `styles.css` - All styling
+- `README.md` - Documentation
+
+## 🗑️ **Removed:**
+- Debug interface and console
+- Development logs
+- Backup files
+- Test code
+- Unnecessary comments
+
+## 🎯 **Production Features:**
+- Professional appearance
+- No debug interface
+- Optimized performance
+- Ready for distribution
+- Full documentation
+
+Run this script and you'll have a clean, professional media player ready to share or distribute! 🚀RetryMAwhat will the folder be called?EditIdentified clean production folder name and location.1sThe user is asking what the folder will be called for the clean production version. Looking at the script I provided, I can see this line:
+bash# Create a new clean folder
+mkdir -p ../ElectronMediaPlayer-Clean
+cd ../ElectronMediaPlayer-Clean
+So the folder will be called ElectronMediaPlayer-Clean and it will be created one level up from the current directory (so it's a sibling folder to the original development folder).The clean production folder will be called:
+ElectronMediaPlayer-Clean
+It will be created as a sibling folder to your current development folder. So if your current structure is:
+📁 YourProjects/
+   📁 ElectronMediaPlayer/     (your current dev version)
+After running the script, you'll have:
+📁 YourProjects/
+   📁 ElectronMediaPlayer/       (original dev version with debug)
+   📁 ElectronMediaPlayer-Clean/ (clean production version)
+The clean version will be completely separate and independent, so you can:
+
+✅ Keep your development version for testing
+✅ Have a clean production version for distribution
+✅ Archive or delete the dev version if you want
+✅ Rename the clean version to whatever you prefer
+
+If you want to change the folder name, just modify this line in the script:
+bashmkdir -p ../ElectronMediaPlayer-Clean
+to whatever name you prefer, like:
+bashmkdir -p ../MyMediaPlayerRetryMAhow do I test it?EditPlotted comprehensive testing steps for clean production version.0sThe user wants to know how to test the clean production version. I should give them step-by-step instructions to run the script, navigate to the new folder, and test the application.Here's how to test your clean production version:
+1. Run the Cleanup Script
+First, copy and paste the entire cleanup script I provided into your terminal and hit Enter. It will create the clean version.
+2. Navigate to the Clean Folder
+bashcd ../ElectronMediaPlayer-Clean
+3. Verify the Clean Files
+bashls -la
+You should see only these essential files:
+package.json
+main.js
+preload.js
+index.html
+styles.css
+README.md
+node_modules/
+4. Start the Clean Version
+bashnpm start
+5. Test All Features
+When the app opens, test these features:
+✅ Basic Functionality:
+
+No debug interface should be visible (clean UI)
+No developer tools open automatically
+Professional appearance
+
+✅ File Operations:
+
+Click "📄 Select Files" - pick some videos/images/audio
+Click "📁 Select Folder" - scan a folder with media
+Files should load and display properly
+
+✅ Playback:
+
+Click items in queue to play them
+Video should play with controls
+Audio should play with controls
+Images should display properly
+
+✅ Advanced Features:
+
+Keyboard shortcuts: Space, arrows, M, F
+Playback controls: Previous/Next/Play/Pause/Mute
+Queue management: Remove items, shuffle
+Playlists: Save playlist, load playlist
+
+✅ Performance:
+
+Should feel snappy and responsive
+No console errors or debug messages
+Clean, professional interface
+
+6. Compare Versions
+You can also compare by running both versions side by side:
+Development version (with debug):
+bashcd ../ElectronMediaPlayer
+npm start
+Production version (clean):
+bashcd ../ElectronMediaPlayer-Clean  
+npm start
+7. Expected Results
+✅ Clean version should have:
+
+No green debug panel
+No debug console messages
+Professional look
+All features working
+Better performance
+
+✅ If everything works correctly:
+
+Your production version is ready!
+You can distribute this version
+You can build it into an app package
+
+Let me know if you encounter any issues during testing! 🚀RetryClaude can make mistakes. Please double-check responses.

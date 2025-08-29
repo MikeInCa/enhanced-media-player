@@ -1,0 +1,1766 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Enhanced Media Player Pro - Fixed Canvas Magnifier</title>
+    <link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* OVERLAY MAGNIFIER - FOR NORMAL MODE */
+        .overlay-magnifier {
+            position: fixed !important;
+            top: 50px !important;
+            right: 50px !important;
+            width: 200px !important;
+            height: 200px !important;
+            border-radius: 50% !important;
+            border: 4px solid #fff !important;
+            background: rgba(0, 0, 0, 0.9) !important;
+            box-shadow: 0 0 50px rgba(255, 255, 255, 0.8) !important;
+            z-index: 9999999 !important;
+            display: none !important;
+            cursor: grab !important;
+            pointer-events: auto !important;
+            isolation: isolate !important;
+        }
+
+        .overlay-canvas {
+            width: 100% !important;
+            height: 100% !important;
+            border-radius: 50% !important;
+            background: #000 !important;
+        }
+
+        .overlay-crosshair {
+            position: absolute !important;
+            top: 50% !important;
+            left: 50% !important;
+            width: 20px !important;
+            height: 20px !important;
+            transform: translate(-50%, -50%) !important;
+            pointer-events: none !important;
+        }
+
+        .overlay-crosshair::before {
+            content: '' !important;
+            position: absolute !important;
+            top: 9px !important;
+            left: 0 !important;
+            width: 20px !important;
+            height: 2px !important;
+            background: #4ecdc4 !important;
+            opacity: 0.8 !important;
+        }
+
+        .overlay-crosshair::after {
+            content: '' !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 9px !important;
+            width: 2px !important;
+            height: 20px !important;
+            background: #4ecdc4 !important;
+            opacity: 0.8 !important;
+        }
+
+        .overlay-controls {
+            position: absolute !important;
+            bottom: -60px !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            display: flex !important;
+            gap: 8px !important;
+            align-items: center !important;
+            background: rgba(0, 0, 0, 0.9) !important;
+            padding: 10px 15px !important;
+            border-radius: 25px !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        }
+
+        .overlay-controls button {
+            background: rgba(255, 255, 255, 0.2) !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+            color: white !important;
+            width: 30px !important;
+            height: 30px !important;
+            border-radius: 50% !important;
+            cursor: pointer !important;
+            font-size: 16px !important;
+            font-weight: bold !important;
+        }
+
+        .overlay-controls span {
+            color: #4ecdc4 !important;
+            font-weight: 600 !important;
+            font-size: 14px !important;
+            min-width: 30px !important;
+            text-align: center !important;
+        }
+
+        /* Canvas fullscreen styles */
+        .canvas-fullscreen {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            background: black !important;
+            z-index: 999998 !important;
+        }
+
+        .canvas-fullscreen-active .overlay-magnifier {
+            display: none !important; /* Hide DOM magnifier in canvas mode */
+        }
+
+        /* Fullscreen UI overlay */
+        .fullscreen-ui {
+            position: fixed !important;
+            bottom: 20px !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            background: rgba(0, 0, 0, 0.8) !important;
+            color: white !important;
+            padding: 10px 20px !important;
+            border-radius: 25px !important;
+            z-index: 9999999 !important;
+            font-size: 14px !important;
+            display: none !important;
+            opacity: 0 !important;
+            transition: opacity 0.3s !important;
+        }
+
+        .canvas-fullscreen-active .fullscreen-ui {
+            display: block !important;
+        }
+
+        .fullscreen-ui.visible {
+            opacity: 1 !important;
+        }
+
+        .drag-indicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 10px;
+            border: 2px dashed #4ecdc4;
+            font-size: 18px;
+            z-index: 1000;
+            display: none;
+            transition: all 0.3s ease;
+        }
+
+        .drag-indicator.active {
+            display: block;
+        }
+
+        body.drag-over {
+            background: rgba(78, 205, 196, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <!-- Debug Panel -->
+    <div id="debugPanel" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.9); color: #00ff00; padding: 10px; font-family: monospace; font-size: 11px; border-radius: 5px; z-index: 999999; max-width: 280px; border: 1px solid #00ff00;">
+        <div><strong>🎬 CURSOR-FOLLOWING MAGNIFIER</strong></div>
+        <div>Canvas Mode: <span id="debugCanvas">No</span></div>
+        <div>Magnifier Active: <span id="debugMagnifier">No</span></div>
+        <div>Cursor: <span id="debugMouse">0,0</span></div>
+        <div>Mag Circle: <span id="debugMagPos">0,0</span></div>
+        <div>
+            <button onclick="toggleOverlayMagnifier()" style="background: #4ecdc4; color: white; border: none; padding: 4px 8px; margin: 2px; border-radius: 3px; font-size: 9px;">Toggle Mag</button>
+            <button onclick="handleCanvasFullscreenToggle()" style="background: #ff6b6b; color: white; border: none; padding: 4px 8px; margin: 2px; border-radius: 3px; font-size: 9px;">Canvas FS</button>
+        </div>
+    </div>
+
+    <!-- Overlay Magnifier (for normal mode only) -->
+    <div class="overlay-magnifier" id="overlayMagnifier">
+        <canvas class="overlay-canvas" id="overlayCanvas" width="200" height="200"></canvas>
+        <div class="overlay-crosshair"></div>
+        <div class="overlay-controls">
+            <button onclick="adjustOverlayZoom(-0.5)">-</button>
+            <span id="overlayZoomLevel">2x</span>
+            <button onclick="adjustOverlayZoom(0.5)">+</button>
+        </div>
+    </div>
+
+    <!-- Fullscreen UI Overlay -->
+    <div class="fullscreen-ui" id="fullscreenUI">
+        ESC to exit • Z for magnifier • +/- zoom • Drag circle to move • Magnifier follows cursor
+    </div>
+
+    <!-- Drag Indicator -->
+    <div class="drag-indicator" id="dragIndicator">
+        📁 Drop media files here to add them to queue
+    </div>
+
+    <div class="enhanced-header">
+        <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle" title="Toggle Dark/Light Theme">
+            🌙 Dark Mode
+        </button>
+        
+        <h1>🎬 Enhanced Media Player Pro</h1>
+        <p>Professional media player with fixed canvas magnifier technology</p>
+    </div>
+
+    <div class="container">
+        <div class="main-section">
+            <div class="controls">
+                <div class="controls-grid">
+                    <button class="btn btn-primary" onclick="selectFiles()">📄 Select Files</button>
+                    <button class="btn btn-primary" onclick="selectFolder()">📁 Select Folder</button>
+                    <button class="btn btn-warning" onclick="shuffleQueue()">🔀 Shuffle Queue</button>
+                    <button class="btn btn-danger" onclick="clearQueue()">🗑️ Clear All</button>
+                </div>
+                
+                <div class="playlist-controls">
+                    <button class="btn btn-success" onclick="savePlaylist()">💾 Save Playlist</button>
+                    <button class="btn btn-success" onclick="loadPlaylist()">📂 Load Playlist</button>
+                    <button class="btn btn-secondary" onclick="showRecentFiles()">🕒 Recent Files</button>
+                    <input type="file" id="playlistInput" accept=".json" style="display:none;" onchange="handlePlaylistFile(event)">
+                </div>
+                
+                <div class="playback-controls">
+                    <button class="btn btn-primary" onclick="previousMedia()">⏮️ Previous</button>
+                    <button class="btn btn-primary" onclick="togglePlayPause()" id="playPauseBtn">⏯️ Play/Pause</button>
+                    <button class="btn btn-primary" onclick="nextMedia()">⏭️ Next</button>
+                    <button class="btn btn-secondary" onclick="toggleMute()" id="muteBtn">🔊 Mute</button>
+                    <button class="btn btn-secondary" onclick="toggleLoop()" id="loopBtn">🔁 Loop: Off</button>
+                    <button class="btn btn-secondary" onclick="toggleMagnifier()" id="magnifierBtn">🔍 Magnifier</button>
+                </div>
+                
+                <div class="keyboard-help">
+                    <strong>⌨️ Shortcuts:</strong> 
+                    <span style="color: var(--accent-color);">Z</span>=Magnifier | 
+                    <span style="color: var(--accent-color);">F</span>=Canvas Fullscreen | 
+                    <span style="color: var(--accent-color);">+/-</span>=Zoom
+                    <br><small style="opacity: 0.7;">💡 NEW: Draggable Canvas Magnifier with fixed magnification!</small>
+                </div>
+            </div>
+
+            <div class="media-player">
+                <div class="media-display" id="mediaDisplay">
+                    <div class="no-media">🎵 No media selected<br><small>Load a video and test Fixed Canvas magnifier!</small></div>
+                </div>
+                <div class="progress-info" id="progressInfo"></div>
+            </div>
+        </div>
+
+        <div class="queue-section">
+            <div class="queue-header">
+                📋 Media Queue <span id="queueCount" style="color: var(--accent-color);">(0 items)</span>
+            </div>
+            <div class="queue-list" id="queueList">
+                <div style="text-align: center; opacity: 0.6; padding: 30px; font-style: italic;">
+                    No files loaded yet
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let mediaQueue = [];
+        let currentIndex = -1;
+        let currentMedia = null;
+        let isPlaying = false;
+        let loopMode = 'off';
+        let recentFiles = [];
+
+        // Safe storage wrapper to handle localStorage errors
+        const SafeStorage = {
+            getItem: function(key) {
+                try {
+                    return localStorage.getItem(key);
+                } catch (e) {
+                    console.warn('localStorage not available, using memory storage');
+                    return window['_storage_' + key] || null;
+                }
+            },
+            setItem: function(key, value) {
+                try {
+                    localStorage.setItem(key, value);
+                } catch (e) {
+                    console.warn('localStorage not available, using memory storage');
+                    window['_storage_' + key] = value;
+                }
+            },
+            removeItem: function(key) {
+                try {
+                    localStorage.removeItem(key);
+                } catch (e) {
+                    console.warn('localStorage not available, using memory storage');
+                    delete window['_storage_' + key];
+                }
+            }
+        };
+
+        // Initialize recent files safely
+        try {
+            recentFiles = JSON.parse(SafeStorage.getItem('recentFiles') || '[]');
+        } catch (e) {
+            recentFiles = [];
+        }
+
+        // Auto-save and restore queue
+        function saveQueue() {
+            try {
+                const queueData = {
+                    queue: mediaQueue.map(item => ({
+                        name: item.name,
+                        path: item.path,
+                        type: item.type,
+                        duration: item.duration
+                    })),
+                    currentIndex: currentIndex,
+                    timestamp: Date.now()
+                };
+                SafeStorage.setItem('mediaQueue', JSON.stringify(queueData));
+                console.log('📁 Queue saved');
+            } catch (e) {
+                console.warn('Could not save queue:', e.message);
+            }
+        }
+
+        function loadQueue() {
+            try {
+                const saved = SafeStorage.getItem('mediaQueue');
+                if (saved) {
+                    const queueData = JSON.parse(saved);
+                    
+                    // Check if saved queue is not too old
+                    const dayInMs = 24 * 60 * 60 * 1000;
+                    if (Date.now() - queueData.timestamp < dayInMs * 7) { // Keep for 7 days
+                        
+                        // Restore queue
+                        queueData.queue.forEach(item => {
+                            mediaQueue.push({
+                                name: item.name,
+                                path: item.path,
+                                type: item.type,
+                                url: createFileUrl(item.path),
+                                id: Date.now() + Math.random(),
+                                duration: item.duration,
+                                thumbnail: null
+                            });
+                        });
+                        
+                        // Restore current index
+                        currentIndex = queueData.currentIndex;
+                        if (currentIndex >= mediaQueue.length) currentIndex = -1;
+                        
+                        updateDisplay();
+                        generateThumbnails();
+                        
+                        // Auto-load the last playing video
+                        if (currentIndex >= 0 && mediaQueue.length > 0) {
+                            loadMedia(currentIndex);
+                        }
+                        
+                        showNotification(`📁 Restored ${mediaQueue.length} videos from last session`);
+                        console.log('📁 Queue restored');
+                        return true;
+                    }
+                }
+            } catch (error) {
+                console.warn('Failed to restore queue:', error.message);
+            }
+            return false;
+        }
+
+        // Magnifier variables
+        let magnifierActive = false;
+        let magnifierZoom = 2;
+        let overlayCanvas, overlayCtx;
+
+        // Canvas fullscreen variables
+        let canvasFullscreen = false;
+        let fullscreenCanvas = null;
+        let fullscreenCtx = null;
+        let animationFrame = null;
+        let uiHideTimeout = null;
+
+        // Canvas magnifier variables
+        let canvasMagnifierX = 150;
+        let canvasMagnifierY = 150;
+        let mouseX = 0;
+        let mouseY = 0;
+        let isDraggingMagnifier = false;
+        let magnifierDragOffset = { x: 0, y: 0 };
+
+        // Keyboard state tracking for polling
+        let keysPressed = new Set();
+        let lastZKeyState = false;
+
+        // GLOBAL KEYBOARD STATE TRACKING
+        document.addEventListener('keydown', (e) => {
+            keysPressed.add(e.code);
+            keysPressed.add(e.key.toLowerCase());
+            console.log('🎹 KEY DOWN:', e.code, e.key, 'Keys pressed:', Array.from(keysPressed));
+        }, true);
+
+        document.addEventListener('keyup', (e) => {
+            keysPressed.delete(e.code);
+            keysPressed.delete(e.key.toLowerCase());
+        }, true);
+
+        // POLLING-BASED Z KEY DETECTION FOR CANVAS MODE
+        function checkZKeyPolling() {
+            if (!canvasFullscreen) return;
+            
+            const zPressed = keysPressed.has('KeyZ') || keysPressed.has('z');
+            
+            if (zPressed && !lastZKeyState) {
+                // Z key just pressed
+                console.log('🔍 POLLING DETECTED Z KEY PRESS!');
+                toggleOverlayMagnifier();
+            }
+            
+            lastZKeyState = zPressed;
+        }
+
+        // Start polling when entering canvas mode
+        let pollingInterval = null;
+
+        // OVERLAY MAGNIFIER SYSTEM (FOR NORMAL MODE)
+        function initOverlayMagnifier() {
+            overlayCanvas = document.getElementById('overlayCanvas');
+            if (overlayCanvas) {
+                overlayCtx = overlayCanvas.getContext('2d');
+                console.log('🔍 Overlay magnifier system initialized');
+            }
+
+            // Make overlay magnifier draggable
+            const overlayMagnifier = document.getElementById('overlayMagnifier');
+            let isDragging = false;
+            let dragOffset = { x: 0, y: 0 };
+
+            overlayMagnifier.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                const rect = overlayMagnifier.getBoundingClientRect();
+                dragOffset.x = e.clientX - rect.left;
+                dragOffset.y = e.clientY - rect.top;
+                overlayMagnifier.style.cursor = 'grabbing';
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging && !canvasFullscreen) {
+                    const x = e.clientX - dragOffset.x;
+                    const y = e.clientY - dragOffset.y;
+                    overlayMagnifier.style.left = Math.max(0, Math.min(window.innerWidth - 200, x)) + 'px';
+                    overlayMagnifier.style.top = Math.max(0, Math.min(window.innerHeight - 200, y)) + 'px';
+                }
+
+                // Update magnifier content
+                if (magnifierActive && !canvasFullscreen) {
+                    updateOverlayMagnifier(e.clientX, e.clientY);
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+                overlayMagnifier.style.cursor = 'grab';
+            });
+        }
+
+        function updateOverlayMagnifier(mouseX, mouseY) {
+            if (!overlayCtx || !currentMedia) return;
+
+            overlayCtx.clearRect(0, 0, 200, 200);
+
+            try {
+                if (currentMedia.tagName === 'VIDEO' || currentMedia.tagName === 'IMG') {
+                    const rect = currentMedia.getBoundingClientRect();
+                    const relX = (mouseX - rect.left) / rect.width;
+                    const relY = (mouseY - rect.top) / rect.height;
+                    const sourceWidth = currentMedia.videoWidth || currentMedia.naturalWidth;
+                    const sourceHeight = currentMedia.videoHeight || currentMedia.naturalHeight;
+
+                    if (relX >= 0 && relX <= 1 && relY >= 0 && relY <= 1) {
+                        const sourceX = relX * sourceWidth;
+                        const sourceY = relY * sourceHeight;
+                        const sourceSize = 100 / magnifierZoom;
+                        
+                        const startX = Math.max(0, Math.min(sourceWidth - sourceSize, sourceX - sourceSize / 2));
+                        const startY = Math.max(0, Math.min(sourceHeight - sourceSize, sourceY - sourceSize / 2));
+                        
+                        overlayCtx.drawImage(currentMedia, startX, startY, sourceSize, sourceSize, 0, 0, 200, 200);
+                    }
+                }
+            } catch (error) {
+                // Fallback display
+                overlayCtx.fillStyle = 'rgba(100, 200, 255, 0.3)';
+                overlayCtx.fillRect(0, 0, 200, 200);
+                overlayCtx.fillStyle = 'white';
+                overlayCtx.font = '14px Arial';
+                overlayCtx.textAlign = 'center';
+                overlayCtx.fillText('Normal Magnifier', 100, 90);
+                overlayCtx.fillText('Working!', 100, 110);
+            }
+        }
+
+        function toggleOverlayMagnifier() {
+            magnifierActive = !magnifierActive;
+            const overlayMagnifier = document.getElementById('overlayMagnifier');
+            const btn = document.getElementById('magnifierBtn');
+
+            console.log(`🔍 Toggling magnifier: ${magnifierActive} (Canvas mode: ${canvasFullscreen})`);
+
+            if (magnifierActive) {
+                if (!canvasFullscreen) {
+                    // Normal mode - show DOM overlay
+                    console.log('Showing DOM magnifier for normal mode');
+                    if (overlayMagnifier.parentNode !== document.body) {
+                        document.body.appendChild(overlayMagnifier);
+                    }
+                    
+                    overlayMagnifier.style.cssText = `
+                        position: fixed !important;
+                        top: 50px !important;
+                        right: 50px !important;
+                        width: 200px !important;
+                        height: 200px !important;
+                        z-index: 9999999 !important;
+                        display: block !important;
+                        visibility: visible !important;
+                        opacity: 1 !important;
+                        pointer-events: auto !important;
+                        border-radius: 50% !important;
+                        border: 4px solid #fff !important;
+                        background: rgba(0, 0, 0, 0.9) !important;
+                        box-shadow: 0 0 50px rgba(255, 255, 255, 0.8) !important;
+                        cursor: grab !important;
+                    `;
+                } else {
+                    // Canvas mode - FORCE HIDE DOM magnifier, canvas will draw it
+                    console.log('Canvas mode - hiding DOM magnifier, canvas will render it');
+                    overlayMagnifier.style.cssText = `
+                        display: none !important;
+                        visibility: hidden !important;
+                        opacity: 0 !important;
+                        pointer-events: none !important;
+                    `;
+                }
+
+                if (btn) {
+                    btn.textContent = '🔍 Hide Magnifier';
+                    btn.classList.add('active');
+                }
+
+                showNotification(`Magnifier activated ${canvasFullscreen ? '(Canvas Mode - follows cursor)' : '(DOM Mode)'}`);
+            } else {
+                // Always hide DOM overlay when deactivating
+                console.log('Deactivating magnifier - hiding DOM overlay');
+                overlayMagnifier.style.cssText = `
+                    display: none !important;
+                    visibility: hidden !important;
+                    opacity: 0 !important;
+                    pointer-events: none !important;
+                `;
+
+                if (btn) {
+                    btn.textContent = '🔍 Magnifier';
+                    btn.classList.remove('active');
+                }
+
+                showNotification('Magnifier deactivated');
+            }
+
+            updateDebugPanel();
+        }
+
+        function adjustOverlayZoom(delta) {
+            magnifierZoom = Math.max(1, Math.min(10, magnifierZoom + delta));
+            const zoomDisplay = document.getElementById('overlayZoomLevel');
+            if (zoomDisplay) {
+                zoomDisplay.textContent = magnifierZoom + 'x';
+            }
+            
+            showNotification(`Zoom: ${magnifierZoom}x`);
+        }
+
+        // CANVAS FULLSCREEN SYSTEM WITH FIXED MAGNIFIER
+        function createCanvasFullscreen() {
+            if (fullscreenCanvas) return;
+            
+            fullscreenCanvas = document.createElement('canvas');
+            fullscreenCanvas.className = 'canvas-fullscreen';
+            fullscreenCanvas.tabIndex = -1; // Remove from tab order but keep focusable
+            
+            fullscreenCanvas.width = window.innerWidth * window.devicePixelRatio;
+            fullscreenCanvas.height = window.innerHeight * window.devicePixelRatio;
+            fullscreenCanvas.style.width = window.innerWidth + 'px';
+            fullscreenCanvas.style.height = window.innerHeight + 'px';
+            
+            fullscreenCtx = fullscreenCanvas.getContext('2d');
+            fullscreenCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            
+            document.body.appendChild(fullscreenCanvas);
+            document.body.classList.add('canvas-fullscreen-active');
+            
+            // Add event listeners - but DON'T focus the canvas
+            fullscreenCanvas.addEventListener('mousemove', handleCanvasMouseMove);
+            fullscreenCanvas.addEventListener('mousedown', handleCanvasMouseDown);
+            fullscreenCanvas.addEventListener('mouseup', handleCanvasMouseUp);
+            fullscreenCanvas.addEventListener('click', (e) => {
+                if (e.detail === 2) { // Double click
+                    exitCanvasFullscreen();
+                }
+            });
+            
+            // Keep document focused for keyboard events
+            document.body.focus();
+            showFullscreenUI();
+        }
+
+        function handleCanvasKeydown(e) {
+            e.preventDefault();
+            
+            switch(e.key) {
+                case 'Escape':
+                case 'F11':
+                case 'f':
+                case 'F':
+                    exitCanvasFullscreen();
+                    break;
+                case 'z':
+                case 'Z':
+                    console.log('Z key pressed in canvas mode');
+                    toggleOverlayMagnifier();
+                    break;
+                case ' ':
+                    togglePlayPause();
+                    break;
+                case 'ArrowLeft':
+                    previousMedia();
+                    break;
+                case 'ArrowRight':
+                    nextMedia();
+                    break;
+                case '+':
+                case '=':
+                    if (magnifierActive) adjustOverlayZoom(0.5);
+                    break;
+                case '-':
+                    if (magnifierActive) adjustOverlayZoom(-0.5);
+                    break;
+            }
+        }
+
+        function handleCanvasMouseMove(e) {
+            // Store mouse position
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            // Update debug info
+            document.getElementById('debugMouse').textContent = `${mouseX},${mouseY}`;
+            document.getElementById('debugMagPos').textContent = `${Math.round(canvasMagnifierX)},${Math.round(canvasMagnifierY)}`;
+            
+            if (isDraggingMagnifier) {
+                // Drag magnifier
+                canvasMagnifierX = mouseX - magnifierDragOffset.x;
+                canvasMagnifierY = mouseY - magnifierDragOffset.y;
+                
+                // Keep magnifier on screen
+                const magnifierSize = 200;
+                canvasMagnifierX = Math.max(0, Math.min(window.innerWidth - magnifierSize, canvasMagnifierX));
+                canvasMagnifierY = Math.max(0, Math.min(window.innerHeight - magnifierSize, canvasMagnifierY));
+            }
+            
+            // Show UI temporarily
+            showFullscreenUI();
+        }
+
+        function handleCanvasMouseDown(e) {
+            if (!magnifierActive) return;
+            
+            const magnifierSize = 200;
+            const distFromMagnifierCenter = Math.sqrt(
+                Math.pow(mouseX - (canvasMagnifierX + magnifierSize/2), 2) + 
+                Math.pow(mouseY - (canvasMagnifierY + magnifierSize/2), 2)
+            );
+            
+            // If clicked within magnifier circle, start dragging
+            if (distFromMagnifierCenter <= magnifierSize/2) {
+                isDraggingMagnifier = true;
+                magnifierDragOffset.x = mouseX - canvasMagnifierX;
+                magnifierDragOffset.y = mouseY - canvasMagnifierY;
+                fullscreenCanvas.style.cursor = 'grabbing';
+                e.preventDefault();
+            }
+        }
+
+        function handleCanvasMouseUp(e) {
+            isDraggingMagnifier = false;
+            fullscreenCanvas.style.cursor = magnifierActive ? 'grab' : 'none';
+        }
+
+        function showFullscreenUI() {
+            const ui = document.getElementById('fullscreenUI');
+            ui.classList.add('visible');
+            
+            if (uiHideTimeout) clearTimeout(uiHideTimeout);
+            uiHideTimeout = setTimeout(() => {
+                ui.classList.remove('visible');
+            }, 3000);
+        }
+
+        function calculateVideoDisplayRect() {
+            if (!currentMedia || !currentMedia.videoWidth) return;
+            
+            const videoAspect = currentMedia.videoWidth / currentMedia.videoHeight;
+            const screenAspect = window.innerWidth / window.innerHeight;
+            
+            if (videoAspect > screenAspect) {
+                // Video is wider - fit to width
+                videoDisplayRect.width = window.innerWidth;
+                videoDisplayRect.height = window.innerWidth / videoAspect;
+                videoDisplayRect.x = 0;
+                videoDisplayRect.y = (window.innerHeight - videoDisplayRect.height) / 2;
+            } else {
+                // Video is taller - fit to height
+                videoDisplayRect.height = window.innerHeight;
+                videoDisplayRect.width = window.innerHeight * videoAspect;
+                videoDisplayRect.x = (window.innerWidth - videoDisplayRect.width) / 2;
+                videoDisplayRect.y = 0;
+            }
+        }
+
+        function drawCanvasMagnifier() {
+            if (!magnifierActive || !canvasFullscreen || !fullscreenCtx || !currentMedia) return;
+
+            const magnifierSize = 200;
+            const borderWidth = 4;
+            
+            // Sample from CURSOR position, not magnifier position
+            const sampleX = mouseX;
+            const sampleY = mouseY;
+            
+            // Convert screen coordinates to video coordinates
+            const relX = (sampleX - videoDisplayRect.x) / videoDisplayRect.width;
+            const relY = (sampleY - videoDisplayRect.y) / videoDisplayRect.height;
+            
+            // Draw magnifier background
+            fullscreenCtx.save();
+            
+            // Create circular clipping path
+            fullscreenCtx.beginPath();
+            fullscreenCtx.arc(canvasMagnifierX + magnifierSize/2, canvasMagnifierY + magnifierSize/2, magnifierSize/2 - borderWidth, 0, Math.PI * 2);
+            fullscreenCtx.clip();
+            
+            try {
+                if (currentMedia.tagName === 'VIDEO' && currentMedia.videoWidth > 0 && 
+                    relX >= 0 && relX <= 1 && relY >= 0 && relY <= 1) {
+                    
+                    // Calculate source coordinates in video
+                    const sourceX = relX * currentMedia.videoWidth;
+                    const sourceY = relY * currentMedia.videoHeight;
+                    const sourceSize = 50 / magnifierZoom; // Smaller source = more zoom
+                    
+                    const startX = Math.max(0, Math.min(currentMedia.videoWidth - sourceSize, sourceX - sourceSize / 2));
+                    const startY = Math.max(0, Math.min(currentMedia.videoHeight - sourceSize, sourceY - sourceSize / 2));
+                    
+                    // Fill with black background first
+                    fullscreenCtx.fillStyle = 'black';
+                    fullscreenCtx.fillRect(canvasMagnifierX, canvasMagnifierY, magnifierSize, magnifierSize);
+                    
+                    // Draw magnified video content
+                    fullscreenCtx.drawImage(
+                        currentMedia,
+                        startX, startY, sourceSize, sourceSize,
+                        canvasMagnifierX + borderWidth, canvasMagnifierY + borderWidth, 
+                        magnifierSize - borderWidth*2, magnifierSize - borderWidth*2
+                    );
+                } else {
+                    // Outside video area - show test pattern
+                    fullscreenCtx.fillStyle = 'rgba(50, 50, 50, 0.8)';
+                    fullscreenCtx.fillRect(canvasMagnifierX, canvasMagnifierY, magnifierSize, magnifierSize);
+                    
+                    fullscreenCtx.fillStyle = 'white';
+                    fullscreenCtx.font = '14px Arial';
+                    fullscreenCtx.textAlign = 'center';
+                    fullscreenCtx.fillText('Outside Video', canvasMagnifierX + magnifierSize/2, canvasMagnifierY + magnifierSize/2 - 10);
+                    fullscreenCtx.fillText('Area', canvasMagnifierX + magnifierSize/2, canvasMagnifierY + magnifierSize/2 + 10);
+                }
+            } catch (error) {
+                // Error fallback
+                fullscreenCtx.fillStyle = 'rgba(255, 100, 100, 0.5)';
+                fullscreenCtx.fillRect(canvasMagnifierX, canvasMagnifierY, magnifierSize, magnifierSize);
+                
+                fullscreenCtx.fillStyle = 'white';
+                fullscreenCtx.font = '12px Arial';
+                fullscreenCtx.textAlign = 'center';
+                fullscreenCtx.fillText('Error', canvasMagnifierX + magnifierSize/2, canvasMagnifierY + magnifierSize/2);
+            }
+            
+            fullscreenCtx.restore();
+            
+            // Draw border
+            fullscreenCtx.strokeStyle = '#fff';
+            fullscreenCtx.lineWidth = borderWidth;
+            fullscreenCtx.beginPath();
+            fullscreenCtx.arc(canvasMagnifierX + magnifierSize/2, canvasMagnifierY + magnifierSize/2, magnifierSize/2 - borderWidth/2, 0, Math.PI * 2);
+            fullscreenCtx.stroke();
+            
+            // Draw crosshair
+            const centerX = canvasMagnifierX + magnifierSize/2;
+            const centerY = canvasMagnifierY + magnifierSize/2;
+            
+            fullscreenCtx.strokeStyle = '#4ecdc4';
+            fullscreenCtx.lineWidth = 2;
+            fullscreenCtx.beginPath();
+            fullscreenCtx.moveTo(centerX - 10, centerY);
+            fullscreenCtx.lineTo(centerX + 10, centerY);
+            fullscreenCtx.moveTo(centerX, centerY - 10);
+            fullscreenCtx.lineTo(centerX, centerY + 10);
+            fullscreenCtx.stroke();
+            
+            // Draw zoom level and coordinates
+            fullscreenCtx.fillStyle = '#4ecdc4';
+            fullscreenCtx.font = '14px Arial';
+            fullscreenCtx.textAlign = 'center';
+            fullscreenCtx.fillText(`${magnifierZoom}x`, centerX, canvasMagnifierY + magnifierSize + 20);
+            
+            // Show what's being sampled
+            fullscreenCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            fullscreenCtx.font = '12px Arial';
+            fullscreenCtx.fillText(`Sampling: ${Math.round(sampleX)},${Math.round(sampleY)}`, centerX, canvasMagnifierY + magnifierSize + 40);
+            
+            // Show drag hint if hovering
+            if (!isDraggingMagnifier) {
+                fullscreenCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                fullscreenCtx.font = '12px Arial';
+                fullscreenCtx.fillText('Drag to move', centerX, canvasMagnifierY - 10);
+            }
+            
+            // Draw a small crosshair at cursor position to show what's being sampled
+            if (relX >= 0 && relX <= 1 && relY >= 0 && relY <= 1) {
+                fullscreenCtx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
+                fullscreenCtx.lineWidth = 2;
+                fullscreenCtx.beginPath();
+                fullscreenCtx.moveTo(sampleX - 8, sampleY);
+                fullscreenCtx.lineTo(sampleX + 8, sampleY);
+                fullscreenCtx.moveTo(sampleX, sampleY - 8);
+                fullscreenCtx.lineTo(sampleX, sampleY + 8);
+                fullscreenCtx.stroke();
+                
+                // Small circle around cursor
+                fullscreenCtx.strokeStyle = 'rgba(255, 255, 0, 0.6)';
+                fullscreenCtx.lineWidth = 1;
+                fullscreenCtx.beginPath();
+                fullscreenCtx.arc(sampleX, sampleY, 12, 0, Math.PI * 2);
+                fullscreenCtx.stroke();
+            }
+        }
+
+        function startCanvasFullscreen() {
+            if (!currentMedia || currentMedia.tagName !== 'VIDEO') {
+                showNotification('Canvas fullscreen only works with videos', 'warning');
+                return;
+            }
+            
+            canvasFullscreen = true;
+            createCanvasFullscreen();
+            
+            // FORCE HIDE any lingering DOM magnifier
+            const overlayMagnifier = document.getElementById('overlayMagnifier');
+            overlayMagnifier.style.cssText = `
+                display: none !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+            `;
+            
+            // Set initial magnifier position
+            canvasMagnifierX = 50;
+            canvasMagnifierY = 50;
+            
+            // Start polling for Z key (backup method)
+            pollingInterval = setInterval(checkZKeyPolling, 50); // Check every 50ms
+            console.log('🔍 Started Z key polling for canvas mode');
+            
+            // ADD DEDICATED CANVAS FULLSCREEN KEYBOARD HANDLER
+            window.canvasKeyHandler = function(e) {
+                console.log('🎬 CANVAS EVENT HANDLER:', e.type, e.code, e.key, 'Target:', e.target.tagName);
+                
+                if ((e.code === 'KeyZ' || e.key === 'z' || e.key === 'Z') && e.type === 'keydown') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    console.log('🔍 CANVAS EVENT HANDLER - Z KEY DETECTED');
+                    toggleOverlayMagnifier();
+                    return false;
+                }
+                
+                if ((e.code === 'Escape' || e.key === 'Escape') && e.type === 'keydown') {
+                    e.preventDefault();
+                    exitCanvasFullscreen();
+                    return false;
+                }
+            };
+            
+            // Try every possible way to catch events
+            document.addEventListener('keydown', window.canvasKeyHandler, true);
+            document.addEventListener('keydown', window.canvasKeyHandler, false);
+            window.addEventListener('keydown', window.canvasKeyHandler, true);
+            fullscreenCanvas.addEventListener('keydown', window.canvasKeyHandler, true);
+            document.body.addEventListener('keydown', window.canvasKeyHandler, true);
+            
+            // Start animation loop
+            function drawFrame() {
+                if (!canvasFullscreen || !fullscreenCanvas || !fullscreenCtx) return;
+                
+                const width = window.innerWidth;
+                const height = window.innerHeight;
+                
+                // Clear canvas
+                fullscreenCtx.fillStyle = 'black';
+                fullscreenCtx.fillRect(0, 0, width, height);
+                
+                // Draw video scaled to fit screen
+                if (currentMedia && currentMedia.videoWidth > 0) {
+                    calculateVideoDisplayRect();
+                    
+                    fullscreenCtx.drawImage(
+                        currentMedia, 
+                        videoDisplayRect.x, videoDisplayRect.y, 
+                        videoDisplayRect.width, videoDisplayRect.height
+                    );
+                }
+                
+                // Draw integrated magnifier ON TOP of video
+                drawCanvasMagnifier();
+                
+                // Draw debug info
+                fullscreenCtx.fillStyle = 'yellow';
+                fullscreenCtx.font = '16px Arial';
+                fullscreenCtx.fillText('Press Z for magnifier (polling active)', 20, 30);
+                fullscreenCtx.fillText(`Keys: ${Array.from(keysPressed).join(', ')}`, 20, 60);
+                
+                animationFrame = requestAnimationFrame(drawFrame);
+            }
+            
+            drawFrame();
+            showNotification('Canvas fullscreen with polling! Press Z for magnifier.');
+        }
+
+        function exitCanvasFullscreen() {
+            canvasFullscreen = false;
+            isDraggingMagnifier = false;
+            
+            // Stop polling
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+                console.log('🔍 Stopped Z key polling');
+            }
+            
+            // Remove dedicated canvas keyboard handler
+            if (window.canvasKeyHandler) {
+                document.removeEventListener('keydown', window.canvasKeyHandler, true);
+                document.removeEventListener('keydown', window.canvasKeyHandler, false);
+                window.removeEventListener('keydown', window.canvasKeyHandler, true);
+                if (fullscreenCanvas) {
+                    fullscreenCanvas.removeEventListener('keydown', window.canvasKeyHandler, true);
+                }
+                document.body.removeEventListener('keydown', window.canvasKeyHandler, true);
+                window.canvasKeyHandler = null;
+            }
+            
+            if (animationFrame) {
+                cancelAnimationFrame(animationFrame);
+                animationFrame = null;
+            }
+            
+            if (fullscreenCanvas) {
+                document.body.removeChild(fullscreenCanvas);
+                fullscreenCanvas = null;
+                fullscreenCtx = null;
+            }
+            
+            document.body.classList.remove('canvas-fullscreen-active');
+            
+            if (uiHideTimeout) {
+                clearTimeout(uiHideTimeout);
+                uiHideTimeout = null;
+            }
+            
+            // Reset keyboard state
+            keysPressed.clear();
+            lastZKeyState = false;
+            
+            // If magnifier was active, show DOM version
+            if (magnifierActive) {
+                const overlayMagnifier = document.getElementById('overlayMagnifier');
+                overlayMagnifier.style.display = 'block';
+            }
+            
+            showNotification('Exited canvas fullscreen');
+            updateDebugPanel();
+        }
+
+        function handleCanvasFullscreenToggle() {
+            if (canvasFullscreen) {
+                exitCanvasFullscreen();
+            } else {
+                startCanvasFullscreen();
+            }
+        }
+
+        // DEBUGGING FUNCTIONS
+        function updateDebugPanel() {
+            document.getElementById('debugCanvas').textContent = canvasFullscreen ? 'YES' : 'NO';
+            document.getElementById('debugMagnifier').textContent = magnifierActive ? 'YES' : 'NO';
+        }
+
+        // WRAPPER FUNCTIONS FOR COMPATIBILITY
+        function toggleMagnifier() {
+            toggleOverlayMagnifier();
+        }
+
+        function adjustZoom(delta) {
+            adjustOverlayZoom(delta);
+        }
+
+        function initMagnifier() {
+            initOverlayMagnifier();
+        }
+
+        // Update debug panel regularly
+        setInterval(updateDebugPanel, 1000);
+
+        // Track mouse for magnifier updates
+        document.addEventListener('mousemove', (e) => {
+            window.lastMouseEvent = e;
+        });
+
+        // KEYBOARD CONTROLS - ULTRA-PRIORITY GLOBAL HANDLER
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            
+            console.log('🎹 Key pressed:', e.code, 'Canvas mode:', canvasFullscreen, 'Target:', e.target.tagName, 'Active element:', document.activeElement.tagName);
+            
+            // ULTRA-PRIORITY: Handle Z key with absolute priority
+            if (e.code === 'KeyZ' || e.key === 'z' || e.key === 'Z') {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                console.log('🔍 Z KEY INTERCEPTED - TOGGLING MAGNIFIER');
+                toggleOverlayMagnifier();
+                return false;
+            }
+            
+            // Handle other priority keys
+            if (e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🎬 F KEY - TOGGLING FULLSCREEN');
+                handleCanvasFullscreenToggle();
+                return false;
+            }
+            
+            // Handle zoom keys when magnifier is active
+            if (magnifierActive) {
+                if (e.code === 'Equal' || e.code === 'NumpadAdd' || e.key === '+' || e.key === '=') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('🔍 ZOOM IN');
+                    adjustOverlayZoom(0.5);
+                    return false;
+                }
+                
+                if (e.code === 'Minus' || e.code === 'NumpadSubtract' || e.key === '-') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('🔍 ZOOM OUT');
+                    adjustOverlayZoom(-0.5);
+                    return false;
+                }
+            }
+            
+            // Handle other keys only if NOT in canvas mode
+            if (!canvasFullscreen) {
+                switch (e.code) {
+                    case 'Space':
+                        e.preventDefault();
+                        togglePlayPause();
+                        break;
+                    case 'ArrowLeft':
+                        e.preventDefault();
+                        previousMedia();
+                        break;
+                    case 'ArrowRight':
+                        e.preventDefault();
+                        nextMedia();
+                        break;
+                    case 'ArrowUp':
+                        e.preventDefault();
+                        if (currentMedia && currentMedia.volume !== undefined) {
+                            currentMedia.volume = Math.min(1, currentMedia.volume + 0.1);
+                            showNotification(`Volume: ${Math.round(currentMedia.volume * 100)}%`);
+                        }
+                        break;
+                    case 'ArrowDown':
+                        e.preventDefault();
+                        if (currentMedia && currentMedia.volume !== undefined) {
+                            currentMedia.volume = Math.max(0, currentMedia.volume - 0.1);
+                            showNotification(`Volume: ${Math.round(currentMedia.volume * 100)}%`);
+                        }
+                        break;
+                    case 'KeyM':
+                        e.preventDefault();
+                        toggleMute();
+                        break;
+                    case 'KeyL':
+                        e.preventDefault();
+                        toggleLoop();
+                        break;
+                    case 'KeyT':
+                        e.preventDefault();
+                        toggleTheme();
+                        break;
+                }
+            } else {
+                // In canvas mode, handle basic playback keys
+                switch (e.code) {
+                    case 'Space':
+                        e.preventDefault();
+                        e.stopPropagation();
+                        togglePlayPause();
+                        break;
+                    case 'ArrowLeft':
+                        e.preventDefault();
+                        e.stopPropagation();
+                        previousMedia();
+                        break;
+                    case 'ArrowRight':
+                        e.preventDefault();
+                        e.stopPropagation();
+                        nextMedia();
+                        break;
+                    case 'Escape':
+                        e.preventDefault();
+                        e.stopPropagation();
+                        exitCanvasFullscreen();
+                        break;
+                }
+            }
+        }, true); // Use capture phase for absolute priority
+
+        // Theme Management
+        function toggleTheme() {
+            const body = document.body;
+            const toggle = document.getElementById('themeToggle');
+            
+            body.classList.toggle('dark-theme');
+            const isDark = body.classList.contains('dark-theme');
+            
+            toggle.textContent = isDark ? '☀️ Light Mode' : '🌙 Dark Mode';
+            SafeStorage.setItem('theme', isDark ? 'dark' : 'light');
+        }
+
+        function loadTheme() {
+            const savedTheme = SafeStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                document.body.classList.add('dark-theme');
+                document.getElementById('themeToggle').textContent = '☀️ Light Mode';
+            }
+        }
+
+        // Enhanced Drag & Drop Support
+        function setupDragAndDrop() {
+            const body = document.body;
+            const indicator = document.getElementById('dragIndicator');
+            let dragCounter = 0;
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                body.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            body.addEventListener('dragenter', (e) => {
+                dragCounter++;
+                indicator.classList.add('active');
+                body.classList.add('drag-over');
+            });
+
+            body.addEventListener('dragleave', (e) => {
+                dragCounter--;
+                if (dragCounter === 0) {
+                    indicator.classList.remove('active');
+                    body.classList.remove('drag-over');
+                }
+            });
+
+            body.addEventListener('drop', (e) => {
+                dragCounter = 0;
+                indicator.classList.remove('active');
+                body.classList.remove('drag-over');
+
+                const files = Array.from(e.dataTransfer.files);
+                const filePaths = files.map(file => file.path).filter(path => path && isSupportedFile(path));
+                
+                if (filePaths.length > 0) {
+                    addFilesToQueue(filePaths);
+                    showNotification(`Added ${filePaths.length} files to queue`);
+                } else {
+                    showNotification('No supported media files found', 'warning');
+                }
+            });
+        }
+
+        // Notification System
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: var(--bg-secondary, rgba(0,0,0,0.9));
+                color: var(--text-primary, white);
+                padding: 15px 20px;
+                border-radius: 10px;
+                backdrop-filter: blur(20px);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                z-index: 99999999;
+                font-size: 14px;
+                max-width: 300px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            `;
+
+            if (type === 'warning') {
+                notification.style.borderLeft = '4px solid orange';
+            } else if (type === 'success') {
+                notification.style.borderLeft = '4px solid #4ecdc4';
+            }
+
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    document.body.removeChild(notification);
+                }
+            }, 3000);
+        }
+
+        // Loop Mode Toggle
+        function toggleLoop() {
+            const modes = ['off', 'single', 'all'];
+            const currentIndex = modes.indexOf(loopMode);
+            loopMode = modes[(currentIndex + 1) % modes.length];
+            
+            const btn = document.getElementById('loopBtn');
+            const icons = { off: '🔁', single: '🔂', all: '🔁' };
+            btn.textContent = `${icons[loopMode]} Loop: ${loopMode.charAt(0).toUpperCase() + loopMode.slice(1)}`;
+            
+            SafeStorage.setItem('loopMode', loopMode);
+            showNotification(`Loop mode: ${loopMode}`);
+        }
+
+        // Recent Files Management
+        function addToRecentFiles(filePath) {
+            recentFiles = recentFiles.filter(f => f.path !== filePath);
+            recentFiles.unshift({
+                path: filePath,
+                name: getBasename(filePath),
+                timestamp: Date.now()
+            });
+            recentFiles = recentFiles.slice(0, 10);
+            SafeStorage.setItem('recentFiles', JSON.stringify(recentFiles));
+        }
+
+        function showRecentFiles() {
+            if (recentFiles.length === 0) {
+                showNotification('No recent files found', 'warning');
+                return;
+            }
+
+            const recentPaths = recentFiles.map(f => f.path);
+            addFilesToQueue(recentPaths);
+            showNotification(`Added ${recentPaths.length} recent files`);
+        }
+
+        // Enhanced Media Loading
+        function loadMedia(index) {
+            if (index < 0 || index >= mediaQueue.length) return;
+            
+            currentIndex = index;
+            const item = mediaQueue[index];
+            const display = document.getElementById('mediaDisplay');
+            
+            addToRecentFiles(item.path);
+            saveQueue(); // Save current position
+            
+            if (currentMedia) {
+                if (currentMedia.pause) currentMedia.pause();
+                currentMedia = null;
+                isPlaying = false;
+            }
+            
+            display.innerHTML = '<div class="loading">Loading...</div>';
+            
+            if (item.type === 'video') {
+                const video = document.createElement('video');
+                video.controls = true;
+                video.style.cssText = 'width:100%;height:100%;background:#000;border-radius:8px;';
+                video.src = item.url;
+                video.crossOrigin = 'anonymous';
+                
+                video.addEventListener('loadedmetadata', () => {
+                    item.duration = video.duration;
+                });
+                
+                video.addEventListener('timeupdate', () => {
+                    updateProgressInfo(video.currentTime, video.duration);
+                });
+                
+                video.addEventListener('play', () => {
+                    isPlaying = true;
+                    updatePlayPauseButton();
+                });
+                
+                video.addEventListener('pause', () => {
+                    isPlaying = false;
+                    updatePlayPauseButton();
+                });
+                
+                video.addEventListener('ended', () => {
+                    handleMediaEnded();
+                });
+                
+                video.addEventListener('error', () => {
+                    display.innerHTML = `<div class="error">❌ Could not load video<br><small>${item.name}</small></div>`;
+                });
+                
+                display.innerHTML = '';
+                display.appendChild(video);
+                currentMedia = video;
+                
+            } else if (item.type === 'audio') {
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.style.cssText = 'width:100%;margin-top:50px;';
+                audio.src = item.url;
+                
+                audio.addEventListener('loadedmetadata', () => {
+                    item.duration = audio.duration;
+                });
+                
+                audio.addEventListener('timeupdate', () => {
+                    updateProgressInfo(audio.currentTime, audio.duration);
+                });
+                
+                audio.addEventListener('play', () => {
+                    isPlaying = true;
+                    updatePlayPauseButton();
+                });
+                
+                audio.addEventListener('pause', () => {
+                    isPlaying = false;
+                    updatePlayPauseButton();
+                });
+                
+                audio.addEventListener('ended', () => {
+                    handleMediaEnded();
+                });
+                
+                audio.addEventListener('error', () => {
+                    display.innerHTML = `<div class="error">❌ Could not load audio<br><small>${item.name}</small></div>`;
+                });
+                
+                display.innerHTML = '';
+                display.appendChild(audio);
+                currentMedia = audio;
+                
+            } else if (item.type === 'image') {
+                const img = document.createElement('img');
+                img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;';
+                img.src = item.url;
+                img.crossOrigin = 'anonymous';
+                
+                img.addEventListener('load', () => {
+                    updateProgressInfo(null, null, `${img.naturalWidth}x${img.naturalHeight}`);
+                });
+                
+                img.addEventListener('error', () => {
+                    display.innerHTML = `<div class="error">❌ Could not load image<br><small>${item.name}</small></div>`;
+                });
+                
+                display.innerHTML = '';
+                display.appendChild(img);
+                currentMedia = img;
+            }
+            
+            updateDisplay();
+        }
+
+        function handleMediaEnded() {
+            if (loopMode === 'single') {
+                if (currentMedia && currentMedia.play) {
+                    currentMedia.currentTime = 0;
+                    currentMedia.play();
+                }
+            } else if (loopMode === 'all') {
+                if (currentIndex < mediaQueue.length - 1) {
+                    nextMedia();
+                } else {
+                    loadMedia(0);
+                }
+            } else {
+                nextMedia();
+            }
+        }
+
+        function loadSettings() {
+            const savedLoop = SafeStorage.getItem('loopMode');
+            if (savedLoop) {
+                loopMode = savedLoop;
+                const btn = document.getElementById('loopBtn');
+                const icons = { off: '🔁', single: '🔂', all: '🔁' };
+                btn.textContent = `${icons[loopMode]} Loop: ${loopMode.charAt(0).toUpperCase() + loopMode.slice(1)}`;
+            }
+        }
+
+        // Utility functions
+        function getBasename(path) {
+            return path.split('/').pop().split('\\').pop();
+        }
+
+        function getExtname(path) {
+            const name = getBasename(path);
+            const dot = name.lastIndexOf('.');
+            return dot === -1 ? '' : name.substring(dot).toLowerCase();
+        }
+
+        function createFileUrl(filePath) {
+            const parts = filePath.split('/');
+            const encodedParts = parts.map(part => {
+                if (part === '') return '';
+                return encodeURIComponent(part);
+            });
+            const encodedPath = encodedParts.join('/');
+            return `file://${encodedPath}`;
+        }
+
+        function getMediaType(filePath) {
+            const ext = getExtname(filePath);
+            if (['.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v', '.flv', '.wmv'].includes(ext)) return 'video';
+            if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.tiff'].includes(ext)) return 'image';
+            if (['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.wma'].includes(ext)) return 'audio';
+            return 'unknown';
+        }
+
+        function isSupportedFile(filePath) {
+            const ext = getExtname(filePath);
+            const supported = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v', '.flv', '.wmv',
+                             '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.tiff',
+                             '.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.wma'];
+            return supported.includes(ext);
+        }
+
+        async function selectFiles() {
+            try {
+                const files = await window.electronAPI.selectFiles();
+                if (files.length === 0) return;
+                addFilesToQueue(files);
+                showNotification(`Added ${files.length} files to queue`);
+            } catch (error) {
+                showNotification('Error selecting files: ' + error.message, 'warning');
+            }
+        }
+
+        async function selectFolder() {
+            try {
+                const files = await window.electronAPI.selectFolder();
+                if (files.length === 0) {
+                    showNotification('No media files found in folder', 'warning');
+                    return;
+                }
+                addFilesToQueue(files);
+                showNotification(`Added ${files.length} files from folder`);
+            } catch (error) {
+                showNotification('Error scanning folder: ' + error.message, 'warning');
+            }
+        }
+
+        function addFilesToQueue(files) {
+            files.forEach(file => {
+                const name = getBasename(file);
+                const type = getMediaType(file);
+                const url = createFileUrl(file);
+                
+                mediaQueue.push({
+                    name: name,
+                    path: file,
+                    type: type,
+                    url: url,
+                    id: Date.now() + Math.random(),
+                    duration: null,
+                    thumbnail: null
+                });
+            });
+            
+            updateDisplay();
+            generateThumbnails();
+            saveQueue(); // Auto-save when adding files
+            
+            if (currentIndex === -1 && mediaQueue.length > 0) {
+                loadMedia(0);
+            }
+        }
+
+        async function generateThumbnails() {
+            for (let i = 0; i < mediaQueue.length; i++) {
+                const item = mediaQueue[i];
+                if (item.type === 'video' && !item.thumbnail) {
+                    try {
+                        const thumbnail = await createVideoThumbnail(item.url);
+                        item.thumbnail = thumbnail;
+                        updateDisplay();
+                    } catch (error) {
+                        // Silently fail for thumbnails
+                    }
+                }
+            }
+        }
+
+        function createVideoThumbnail(videoUrl) {
+            return new Promise((resolve, reject) => {
+                const video = document.createElement('video');
+                video.crossOrigin = 'anonymous';
+                video.currentTime = 1;
+                
+                video.addEventListener('loadeddata', () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 160;
+                        canvas.height = 90;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL());
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+                
+                video.addEventListener('error', reject);
+                video.src = videoUrl;
+            });
+        }
+
+        function togglePlayPause() {
+            if (!currentMedia || !currentMedia.play) return;
+            
+            if (isPlaying) {
+                currentMedia.pause();
+            } else {
+                currentMedia.play();
+            }
+        }
+
+        function previousMedia() {
+            if (currentIndex > 0) {
+                loadMedia(currentIndex - 1);
+            }
+        }
+
+        function nextMedia() {
+            if (currentIndex < mediaQueue.length - 1) {
+                loadMedia(currentIndex + 1);
+            }
+        }
+
+        function toggleMute() {
+            if (!currentMedia || currentMedia.muted === undefined) return;
+            
+            currentMedia.muted = !currentMedia.muted;
+            document.getElementById('muteBtn').textContent = currentMedia.muted ? '🔇 Unmute' : '🔊 Mute';
+        }
+
+        function updatePlayPauseButton() {
+            const btn = document.getElementById('playPauseBtn');
+            btn.textContent = isPlaying ? '⏸️ Pause' : '▶️ Play';
+        }
+
+        function updateProgressInfo(currentTime, duration, extra = '') {
+            const info = document.getElementById('progressInfo');
+            if (currentTime !== null && duration) {
+                const current = formatTime(currentTime);
+                const total = formatTime(duration);
+                const percent = Math.round((currentTime / duration) * 100);
+                info.textContent = `${current} / ${total} (${percent}%) ${extra}`;
+            } else if (extra) {
+                info.textContent = extra;
+            } else {
+                info.textContent = '';
+            }
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function shuffleQueue() {
+            if (mediaQueue.length < 2) return;
+            
+            const currentItem = mediaQueue[currentIndex];
+            
+            for (let i = mediaQueue.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [mediaQueue[i], mediaQueue[j]] = [mediaQueue[j], mediaQueue[i]];
+            }
+            
+            currentIndex = mediaQueue.findIndex(item => item.id === currentItem.id);
+            updateDisplay();
+            showNotification('Queue shuffled');
+        }
+
+        function savePlaylist() {
+            if (mediaQueue.length === 0) {
+                showNotification('No items in queue to save', 'warning');
+                return;
+            }
+            
+            const playlist = {
+                name: `Playlist ${new Date().toLocaleDateString()}`,
+                created: new Date().toISOString(),
+                items: mediaQueue.map(item => ({
+                    name: item.name,
+                    path: item.path,
+                    type: item.type
+                }))
+            };
+            
+            const blob = new Blob([JSON.stringify(playlist, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `playlist_${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showNotification('Playlist saved successfully');
+        }
+
+        function loadPlaylist() {
+            document.getElementById('playlistInput').click();
+        }
+
+        function handlePlaylistFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const playlist = JSON.parse(e.target.result);
+                    clearQueue();
+                    
+                    const validItems = [];
+                    playlist.items.forEach(item => {
+                        validItems.push(item.path);
+                    });
+                    
+                    addFilesToQueue(validItems);
+                    showNotification(`✅ Loaded playlist: ${validItems.length} items`);
+                    
+                } catch (error) {
+                    showNotification('Error loading playlist file', 'warning');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function clearQueue() {
+            if (currentMedia && currentMedia.pause) currentMedia.pause();
+            mediaQueue = [];
+            currentIndex = -1;
+            currentMedia = null;
+            isPlaying = false;
+            document.getElementById('mediaDisplay').innerHTML = '<div class="no-media">🎵 No media selected<br><small>Load a video and test Fixed Canvas magnifier!</small></div>';
+            document.getElementById('progressInfo').textContent = '';
+            updateDisplay();
+            saveQueue(); // Save empty queue
+            SafeStorage.removeItem('mediaQueue'); // Clear saved queue
+            showNotification('Queue cleared');
+        }
+
+        function updateDisplay() {
+            const list = document.getElementById('queueList');
+            const count = document.getElementById('queueCount');
+            
+            count.textContent = `(${mediaQueue.length} items)`;
+            
+            if (mediaQueue.length === 0) {
+                list.innerHTML = '<div style="text-align: center; opacity: 0.6; padding: 30px; font-style: italic;">No files loaded yet</div>';
+                return;
+            }
+            
+            let html = '';
+            mediaQueue.forEach((item, i) => {
+                const current = i === currentIndex ? 'current' : '';
+                const icon = item.type === 'video' ? '🎬' : item.type === 'audio' ? '🎵' : '🖼️';
+                const thumbnail = item.thumbnail ? `<img src="${item.thumbnail}" class="thumbnail">` : '';
+                const duration = item.duration ? ` (${formatTime(item.duration)})` : '';
+                
+                html += `
+                    <div class="queue-item-enhanced ${current} ${item.type}" onclick="loadMedia(${i})" title="Click to play: ${item.name}">
+                        ${thumbnail}
+                        <div style="flex: 1;">
+                            <div style="font-weight: bold; font-size: 14px;">${icon} ${item.name}</div>
+                            <div style="font-size: 11px; opacity: 0.7; margin-top: 4px;">${item.type}${duration}</div>
+                        </div>
+                        <button onclick="event.stopPropagation(); removeFromQueue(${i})" 
+                                title="Remove from queue"
+                                style="background:var(--danger-color, red);color:white;border:none;padding:8px 12px;border-radius:6px;font-size:11px;font-weight:600;">
+                            Remove
+                        </button>
+                    </div>
+                `;
+            });
+            list.innerHTML = html;
+        }
+
+        function removeFromQueue(index) {
+            const item = mediaQueue[index];
+            mediaQueue.splice(index, 1);
+            
+            if (currentIndex >= index) currentIndex--;
+            if (mediaQueue.length === 0) {
+                clearQueue();
+            } else if (currentIndex < 0 && mediaQueue.length > 0) {
+                loadMedia(0);
+            } else {
+                updateDisplay();
+                saveQueue(); // Save after removing
+            }
+            showNotification(`Removed: ${item.name}`);
+        }
+
+        // Initialize everything
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTheme();
+            loadSettings();
+            setupDragAndDrop();
+            initMagnifier();
+            updateDebugPanel();
+            
+            // Try to restore previous queue
+            if (!loadQueue()) {
+                // If no queue restored, show welcome message
+                showNotification('Fixed Canvas Magnifier loaded! Add videos to get started. 🎉');
+            }
+        });
+    </script>
+</body>
+</html>

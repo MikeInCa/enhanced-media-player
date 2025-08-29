@@ -1,0 +1,40 @@
+{
+  "name": "enhanced-media-player",
+  "version": "1.0.0",
+  "description": "Enhanced Electron Media Player with audio, video, image support, playlists, and keyboard controls",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --enable-logging",
+    "build": "electron-builder",
+    "dist": "npm run build"
+  },
+  "keywords": ["electron", "media", "player", "video", "audio", "playlist"],
+  "author": "Mike",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.mike.enhanced-media-player",
+    "productName": "Enhanced Media Player",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js", 
+      "index.html",
+      "styles.css"
+    ],
+    "mac": {
+      "category": "public.app-category.video"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}

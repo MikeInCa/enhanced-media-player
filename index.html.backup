@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Enhanced Media Player Pro</title>
+    <link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+    <!-- Drag Indicator -->
+    <div class="drag-indicator" id="dragIndicator">
+        📁 Drop media files here to add them to queue
+    </div>
+
+    <!-- Magnifier Tool -->
+    <div class="magnifier-container" id="magnifierContainer" style="display: none;">
+        <div class="magnifier-lens" id="magnifierLens">
+            <canvas id="magnifierCanvas"></canvas>
+            <div class="magnifier-crosshair"></div>
+        </div>
+        <div class="magnifier-controls">
+            <div class="zoom-level" id="zoomLevel">2x</div>
+            <button class="magnifier-btn" onclick="adjustZoom(-0.5)" title="Zoom Out">-</button>
+            <button class="magnifier-btn" onclick="adjustZoom(0.5)" title="Zoom In">+</button>
+            <button class="magnifier-btn" onclick="toggleMagnifierMode()" title="Toggle Follow Mode" id="followModeBtn">📌</button>
+        </div>
+    </div>
+
+    <div class="enhanced-header">
+        <!-- Theme Toggle Button -->
+        <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle" title="Toggle Dark/Light Theme">
+            🌙 Dark Mode
+        </button>
+        
+        <h1>🎬 Enhanced Media Player Pro</h1>
+        <p>Professional media player with modern controls & enhanced design</p>
+    </div>
+
+    <div class="container">
+        <div class="main-section">
+            <div class="controls">
+                <!-- PRIMARY FILE CONTROLS -->
+                <div class="controls-grid">
+                    <button class="btn btn-primary" onclick="selectFiles()" title="Select individual media files">
+                        📄 Select Files
+                    </button>
+                    <button class="btn btn-primary" onclick="selectFolder()" title="Scan folder for media files">
+                        📁 Select Folder
+                    </button>
+                    <button class="btn btn-warning" onclick="shuffleQueue()" title="Randomize queue order">
+                        🔀 Shuffle Queue
+                    </button>
+                    <button class="btn btn-danger" onclick="clearQueue()" title="Remove all files from queue">
+                        🗑️ Clear All
+                    </button>
+                </div>
+                
+                <!-- PLAYLIST MANAGEMENT -->
+                <div class="playlist-controls">
+                    <button class="btn btn-success" onclick="savePlaylist()" title="Save current queue as playlist">
+                        💾 Save Playlist
+                    </button>
+                    <button class="btn btn-success" onclick="loadPlaylist()" title="Load saved playlist">
+                        📂 Load Playlist
+                    </button>
+                    <button class="btn btn-secondary" onclick="showRecentFiles()" title="Show recently played files">
+                        🕒 Recent Files
+                    </button>
+                    <input type="file" id="playlistInput" accept=".json" style="display:none;" onchange="handlePlaylistFile(event)">
+                </div>
+                
+                <!-- PLAYBACK CONTROLS -->
+                <div class="playback-controls">
+                    <button class="btn btn-primary" onclick="previousMedia()" title="Previous (←)">
+                        ⏮️ Previous
+                    </button>
+                    <button class="btn btn-primary" onclick="togglePlayPause()" id="playPauseBtn" title="Play/Pause (Space)">
+                        ⏯️ Play/Pause
+                    </button>
+                    <button class="btn btn-primary" onclick="nextMedia()" title="Next (→)">
+                        ⏭️ Next
+                    </button>
+                    <button class="btn btn-secondary" onclick="toggleMute()" id="muteBtn" title="Mute (M)">
+                        🔊 Mute
+                    </button>
+                    <button class="btn btn-secondary" onclick="toggleLoop()" id="loopBtn" title="Toggle Loop Mode">
+                        🔁 Loop: Off
+                    </button>
+                    <button class="btn btn-secondary" onclick="toggleMagnifier()" id="magnifierBtn" title="Toggle Magnifier (Z)">
+                        🔍 Magnifier
+                    </button>
+                </div>
+                
+                <div class="keyboard-help">
+                    <strong>⌨️ Keyboard Shortcuts:</strong> 
+                    <span style="color: var(--accent-color);">Space</span>=Play/Pause | 
+                    <span style="color: var(--accent-color);">←/→</span>=Previous/Next | 
+                    <span style="color: var(--accent-color);">↑/↓</span>=Volume | 
+                    <span style="color: var(--accent-color);">M</span>=Mute | 
+                    <span style="color: var(--accent-color);">F</span>=Fullscreen |
+                    <span style="color: var(--accent-color);">L</span>=Loop |
+                    <span style="color: var(--accent-color);">Z</span>=Magnifier |
+                    <span style="color: var(--accent-color);">+/-</span>=Zoom
+                    <br><small style="opacity: 0.7;">💡 Magnifier works in fullscreen mode!</small>
+                </div>
+            </div>
+
+            <div class="media-player">
+                <div class="media-display" id="mediaDisplay">
+                    <div class="no-media">🎵 No media selected<br><small>Use the controls above or drag & drop files to get started</small></div>
+                </div>
+                <div class="progress-info" id="progressInfo"></div>
+            </div>
+        </div>
+
+        <div class="queue-section">
+            <div class="queue-header">
+                📋 Media Queue <span id="queueCount" style="color: var(--accent-color);">(0 items)</span>
+                <br><small style="opacity: 0.7; font-weight: normal;">Drag & drop files here or use controls</small>
+            </div>
+            <div class="queue-list" id="queueList">
+                <div style="text-align: center; opacity: 0.6; padding: 30px; font-style: italic;">
+                    No files loaded yet<br>
+                    <small>Try dragging files here!</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let mediaQueue = [];
+        let currentIndex = -1;
+        let currentMedia = null;
+        let isPlaying = false;
+        let loopMode = 'off'; // 'off', 'single', 'all'
+        let recentFiles = JSON.parse(localStorage.getItem('recentFiles') || '[]');
+
+        // Magnifier variables
+        let magnifierActive = false;
+        let magnifierZoom = 2;
+        let magnifierFollowMouse = true;
+        let magnifierCanvas, magnifierCtx;
+        let magnifierUpdateInterval;
+
+        // Initialize Magnifier
+        function initMagnifier() {
+            magnifierCanvas = document.getElementById('magnifierCanvas');
+            magnifierCtx = magnifierCanvas.getContext('2d');
+            magnifierCanvas.width = 200;
+            magnifierCanvas.height = 200;
+            
+            const container = document.getElementById('magnifierContainer');
+            const lens = document.getElementById('magnifierLens');
+            
+            // Make magnifier draggable when not following mouse
+            let isDragging = false;
+            let dragOffset = { x: 0, y: 0 };
+            
+            lens.addEventListener('mousedown', (e) => {
+                if (!magnifierFollowMouse) {
+                    isDragging = true;
+                    const rect = lens.getBoundingClientRect();
+                    dragOffset.x = e.clientX - rect.left;
+                    dragOffset.y = e.clientY - rect.top;
+                    lens.style.cursor = 'grabbing';
+                }
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if (magnifierActive) {
+                    if (magnifierFollowMouse) {
+                        positionMagnifier(e.clientX, e.clientY);
+                    } else if (isDragging) {
+                        const x = e.clientX - dragOffset.x;
+                        const y = e.clientY - dragOffset.y;
+                        positionMagnifier(x + 100, y + 100); // Center the lens
+                    }
+                    updateMagnifier(e.clientX, e.clientY);
+                }
+            });
+            
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+                lens.style.cursor = magnifierFollowMouse ? 'none' : 'grab';
+            });
+
+            // Handle fullscreen changes
+            document.addEventListener('fullscreenchange', handleFullscreenChange);
+            document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+            document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+            document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+        }
+
+        // Check if we're in fullscreen mode
+        function isFullscreen() {
+            return !!(document.fullscreenElement || document.webkitFullscreenElement || 
+                     document.mozFullScreenElement || document.msFullscreenElement);
+        }
+
+        // Handle fullscreen state changes
+        function handleFullscreenChange() {
+            const container = document.getElementById('magnifierContainer');
+            
+            if (isFullscreen()) {
+                // Fullscreen mode - maximize z-index and add fullscreen class
+                if (magnifierActive) {
+                    container.style.zIndex = '2147483647';
+                    container.classList.add('fullscreen');
+                    showNotification('Magnifier now works in fullscreen!');
+                }
+            } else {
+                // Normal mode - restore normal z-index and remove fullscreen class
+                if (magnifierActive) {
+                    container.style.zIndex = '999999';
+                    container.classList.remove('fullscreen');
+                    showNotification('Magnifier restored to normal mode');
+                }
+            }
+        }
+
+        function toggleMagnifier() {
+            magnifierActive = !magnifierActive;
+            const container = document.getElementById('magnifierContainer');
+            const btn = document.getElementById('magnifierBtn');
+            
+            if (magnifierActive) {
+                container.style.display = 'block';
+                btn.textContent = '🔍 Hide Magnifier';
+                btn.classList.add('active');
+                document.body.style.cursor = magnifierFollowMouse ? 'none' : 'default';
+                
+                // Set appropriate z-index based on fullscreen state
+                if (isFullscreen()) {
+                    container.style.zIndex = '2147483647';
+                    container.classList.add('fullscreen');
+                } else {
+                    container.style.zIndex = '999999';
+                    container.classList.remove('fullscreen');
+                }
+                
+                // Start updating magnifier
+                magnifierUpdateInterval = setInterval(() => {
+                    const event = window.lastMouseEvent;
+                    if (event) updateMagnifier(event.clientX, event.clientY);
+                }, 16); // 60fps
+                
+                if (isFullscreen()) {
+                    showNotification('Magnifier activated - Works in fullscreen!');
+                } else {
+                    showNotification('Magnifier activated - Move mouse to explore!');
+                }
+            } else {
+                container.style.display = 'none';
+                btn.textContent = '🔍 Magnifier';
+                btn.classList.remove('active');
+                container.classList.remove('fullscreen');
+                document.body.style.cursor = 'default';
+                
+                if (magnifierUpdateInterval) {
+                    clearInterval(magnifierUpdateInterval);
+                }
+                
+                showNotification('Magnifier deactivated');
+            }
+        }
+
+        function positionMagnifier(x, y) {
+            const lens = document.getElementById('magnifierLens');
+            const container = document.getElementById('magnifierContainer');
+            
+            // Keep magnifier within viewport
+            const lensSize = 200;
+            let maxX, maxY;
+            
+            if (isFullscreen()) {
+                // In fullscreen, use full window dimensions
+                maxX = window.innerWidth - lensSize - 20;
+                maxY = window.innerHeight - lensSize - 20;
+            } else {
+                // Normal mode
+                maxX = window.innerWidth - lensSize - 20;
+                maxY = window.innerHeight - lensSize - 20;
+            }
+            
+            let posX = Math.max(20, Math.min(maxX, x - lensSize / 2));
+            let posY = Math.max(20, Math.min(maxY, y - lensSize / 2));
+            
+            container.style.left = posX + 'px';
+            container.style.top = posY + 'px';
+        }
+
+        function updateMagnifier(mouseX, mouseY) {
+            if (!magnifierActive || !currentMedia) return;
+            
+            let targetRect;
+            
+            if (isFullscreen()) {
+                // In fullscreen, the video fills the entire screen
+                targetRect = {
+                    left: 0,
+                    top: 0,
+                    right: window.innerWidth,
+                    bottom: window.innerHeight,
+                    width: window.innerWidth,
+                    height: window.innerHeight
+                };
+            } else {
+                // Normal mode - use media display area
+                const mediaDisplay = document.getElementById('mediaDisplay');
+                targetRect = mediaDisplay.getBoundingClientRect();
+            }
+            
+            // Check if mouse is over the target area
+            if (mouseX < targetRect.left || mouseX > targetRect.right ||
+                mouseY < targetRect.top || mouseY > targetRect.bottom) {
+                return;
+            }
+            
+            // Calculate relative position within target area
+            const relX = mouseX - targetRect.left;
+            const relY = mouseY - targetRect.top;
+            
+            // Clear canvas
+            magnifierCtx.clearRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
+            
+            try {
+                if (currentMedia.tagName === 'VIDEO' || currentMedia.tagName === 'IMG') {
+                    let mediaWidth, mediaHeight;
+                    let mediaLeft = 0, mediaTop = 0;
+                    
+                    if (isFullscreen()) {
+                        // In fullscreen, video fills the screen
+                        mediaWidth = window.innerWidth;
+                        mediaHeight = window.innerHeight;
+                    } else {
+                        // Normal mode - get actual media element bounds
+                        const mediaRect = currentMedia.getBoundingClientRect();
+                        mediaWidth = mediaRect.width;
+                        mediaHeight = mediaRect.height;
+                        mediaLeft = mediaRect.left - targetRect.left;
+                        mediaTop = mediaRect.top - targetRect.top;
+                    }
+                    
+                    const mediaRelX = (relX - mediaLeft) / mediaWidth;
+                    const mediaRelY = (relY - mediaTop) / mediaHeight;
+                    
+                    if (mediaRelX >= 0 && mediaRelX <= 1 && mediaRelY >= 0 && mediaRelY <= 1) {
+                        // Calculate source coordinates
+                        const sourceWidth = currentMedia.videoWidth || currentMedia.naturalWidth || currentMedia.width;
+                        const sourceHeight = currentMedia.videoHeight || currentMedia.naturalHeight || currentMedia.height;
+                        
+                        const sourceX = mediaRelX * sourceWidth;
+                        const sourceY = mediaRelY * sourceHeight;
+                        
+                        const sourceSize = 100 / magnifierZoom; // Source area size
+                        const sourceStartX = Math.max(0, Math.min(sourceWidth - sourceSize, sourceX - sourceSize / 2));
+                        const sourceStartY = Math.max(0, Math.min(sourceHeight - sourceSize, sourceY - sourceSize / 2));
+                        
+                        // Draw magnified content
+                        magnifierCtx.drawImage(
+                            currentMedia,
+                            sourceStartX,
+                            sourceStartY,
+                            sourceSize,
+                            sourceSize,
+                            0,
+                            0,
+                            magnifierCanvas.width,
+                            magnifierCanvas.height
+                        );
+                    }
+                }
+            } catch (error) {
+                // Fallback: show a gradient or pattern
+                const gradient = magnifierCtx.createRadialGradient(100, 100, 0, 100, 100, 100);
+                gradient.addColorStop(0, 'rgba(102, 126, 234, 0.3)');
+                gradient.addColorStop(1, 'rgba(118, 75, 162, 0.1)');
+                magnifierCtx.fillStyle = gradient;
+                magnifierCtx.fillRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
+                
+                magnifierCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                magnifierCtx.font = '14px Arial';
+                magnifierCtx.textAlign = 'center';
+                magnifierCtx.fillText('Magnifier', 100, 100);
+            }
+        }
+
+        function adjustZoom(delta) {
+            magnifierZoom = Math.max(1, Math.min(10, magnifierZoom + delta));
+            document.getElementById('zoomLevel').textContent = magnifierZoom + 'x';
+            showNotification(`Magnifier zoom: ${magnifierZoom}x`);
+        }
+
+        function toggleMagnifierMode() {
+            magnifierFollowMouse = !magnifierFollowMouse;
+            const btn = document.getElementById('followModeBtn');
+            const lens = document.getElementById('magnifierLens');
+            
+            if (magnifierFollowMouse) {
+                btn.textContent = '📌';
+                btn.title = 'Switch to Drag Mode';
+                lens.style.cursor = 'none';
+                document.body.style.cursor = magnifierActive ? 'none' : 'default';
+                showNotification('Magnifier: Follow mouse mode');
+            } else {
+                btn.textContent = '🖱️';
+                btn.title = 'Switch to Follow Mode';
+                lens.style.cursor = 'grab';
+                document.body.style.cursor = 'default';
+                showNotification('Magnifier: Drag mode - Click and drag to move');
+            }
+        }
+
+        // Track mouse position globally
+        document.addEventListener('mousemove', (e) => {
+            window.lastMouseEvent = e;
+        });
+
+        // Theme Management
+        function toggleTheme() {
+            const body = document.body;
+            const toggle = document.getElementById('themeToggle');
+            
+            body.classList.toggle('dark-theme');
+            const isDark = body.classList.contains('dark-theme');
+            
+            toggle.textContent = isDark ? '☀️ Light Mode' : '🌙 Dark Mode';
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        }
+
+        // Load saved theme
+        function loadTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                document.body.classList.add('dark-theme');
+                document.getElementById('themeToggle').textContent = '☀️ Light Mode';
+            }
+        }
+
+        // Enhanced Drag & Drop Support
+        function setupDragAndDrop() {
+            const body = document.body;
+            const indicator = document.getElementById('dragIndicator');
+            let dragCounter = 0;
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                body.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            body.addEventListener('dragenter', (e) => {
+                dragCounter++;
+                indicator.classList.add('active');
+                body.classList.add('drag-over');
+            });
+
+            body.addEventListener('dragleave', (e) => {
+                dragCounter--;
+                if (dragCounter === 0) {
+                    indicator.classList.remove('active');
+                    body.classList.remove('drag-over');
+                }
+            });
+
+            body.addEventListener('drop', (e) => {
+                dragCounter = 0;
+                indicator.classList.remove('active');
+                body.classList.remove('drag-over');
+
+                const files = Array.from(e.dataTransfer.files);
+                const filePaths = files.map(file => file.path).filter(path => path && isSupportedFile(path));
+                
+                if (filePaths.length > 0) {
+                    addFilesToQueue(filePaths);
+                    showNotification(`Added ${filePaths.length} files to queue`);
+                } else {
+                    showNotification('No supported media files found', 'warning');
+                }
+            });
+        }
+
+        // Notification System
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: var(--bg-secondary);
+                color: var(--text-primary);
+                padding: 15px 20px;
+                border-radius: 10px;
+                backdrop-filter: blur(20px);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                z-index: 1000;
+                animation: slideInUp 0.3s ease;
+                box-shadow: 0 8px 32px var(--shadow);
+            `;
+
+            if (type === 'warning') {
+                notification.style.borderLeftColor = 'var(--warning-color)';
+                notification.style.borderLeft = '4px solid var(--warning-color)';
+            } else if (type === 'success') {
+                notification.style.borderLeftColor = 'var(--success-color)';
+                notification.style.borderLeft = '4px solid var(--success-color)';
+            }
+
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'fadeOut 0.3s ease';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        document.body.removeChild(notification);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // Loop Mode Toggle
+        function toggleLoop() {
+            const modes = ['off', 'single', 'all'];
+            const currentIndex = modes.indexOf(loopMode);
+            loopMode = modes[(currentIndex + 1) % modes.length];
+            
+            const btn = document.getElementById('loopBtn');
+            const icons = { off: '🔁', single: '🔂', all: '🔁' };
+            btn.textContent = `${icons[loopMode]} Loop: ${loopMode.charAt(0).toUpperCase() + loopMode.slice(1)}`;
+            
+            localStorage.setItem('loopMode', loopMode);
+            showNotification(`Loop mode: ${loopMode}`);
+        }
+
+        // Recent Files Management
+        function addToRecentFiles(filePath) {
+            recentFiles = recentFiles.filter(f => f.path !== filePath);
+            recentFiles.unshift({
+                path: filePath,
+                name: getBasename(filePath),
+                timestamp: Date.now()
+            });
+            recentFiles = recentFiles.slice(0, 10); // Keep only 10 recent files
+            localStorage.setItem('recentFiles', JSON.stringify(recentFiles));
+        }
+
+        function showRecentFiles() {
+            if (recentFiles.length === 0) {
+                showNotification('No recent files found', 'warning');
+                return;
+            }
+
+            const recentPaths = recentFiles.map(f => f.path);
+            addFilesToQueue(recentPaths);
+            showNotification(`Added ${recentPaths.length} recent files`);
+        }
+
+        // Enhanced Media Loading with Recent Files
+        function loadMedia(index) {
+            if (index < 0 || index >= mediaQueue.length) return;
+            
+            currentIndex = index;
+            const item = mediaQueue[index];
+            const display = document.getElementById('mediaDisplay');
+            
+            // Add to recent files
+            addToRecentFiles(item.path);
+            
+            if (currentMedia) {
+                if (currentMedia.pause) currentMedia.pause();
+                currentMedia = null;
+                isPlaying = false;
+            }
+            
+            display.innerHTML = '<div class="loading">Loading...</div>';
+            
+            if (item.type === 'video') {
+                const video = document.createElement('video');
+                video.controls = true;
+                video.style.cssText = 'width:100%;height:100%;background:#000;border-radius:8px;';
+                video.src = item.url;
+                video.crossOrigin = 'anonymous'; // For magnifier access
+                
+                video.addEventListener('loadedmetadata', () => {
+                    item.duration = video.duration;
+                });
+                
+                video.addEventListener('timeupdate', () => {
+                    updateProgressInfo(video.currentTime, video.duration);
+                });
+                
+                video.addEventListener('play', () => {
+                    isPlaying = true;
+                    updatePlayPauseButton();
+                });
+                
+                video.addEventListener('pause', () => {
+                    isPlaying = false;
+                    updatePlayPauseButton();
+                });
+                
+                video.addEventListener('ended', () => {
+                    handleMediaEnded();
+                });
+                
+                video.addEventListener('error', () => {
+                    display.innerHTML = `<div class="error">❌ Could not load video<br><small>${item.name}</small></div>`;
+                });
+                
+                display.innerHTML = '';
+                display.appendChild(video);
+                currentMedia = video;
+                
+            } else if (item.type === 'audio') {
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.style.cssText = 'width:100%;margin-top:50px;';
+                audio.src = item.url;
+                
+                audio.addEventListener('loadedmetadata', () => {
+                    item.duration = audio.duration;
+                });
+                
+                audio.addEventListener('timeupdate', () => {
+                    updateProgressInfo(audio.currentTime, audio.duration);
+                });
+                
+                audio.addEventListener('play', () => {
+                    isPlaying = true;
+                    updatePlayPauseButton();
+                });
+                
+                audio.addEventListener('pause', () => {
+                    isPlaying = false;
+                    updatePlayPauseButton();
+                });
+                
+                audio.addEventListener('ended', () => {
+                    handleMediaEnded();
+                });
+                
+                audio.addEventListener('error', () => {
+                    display.innerHTML = `<div class="error">❌ Could not load audio<br><small>${item.name}</small></div>`;
+                });
+                
+                display.innerHTML = '';
+                display.appendChild(audio);
+                currentMedia = audio;
+                
+            } else if (item.type === 'image') {
+                const img = document.createElement('img');
+                img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;';
+                img.src = item.url;
+                img.crossOrigin = 'anonymous'; // For magnifier access
+                
+                img.addEventListener('load', () => {
+                    updateProgressInfo(null, null, `${img.naturalWidth}x${img.naturalHeight}`);
+                });
+                
+                img.addEventListener('error', () => {
+                    display.innerHTML = `<div class="error">❌ Could not load image<br><small>${item.name}</small></div>`;
+                });
+                
+                display.innerHTML = '';
+                display.appendChild(img);
+                currentMedia = img;
+            }
+            
+            updateDisplay();
+        }
+
+        // Enhanced Media End Handling with Loop Support
+        function handleMediaEnded() {
+            if (loopMode === 'single') {
+                // Replay current media
+                if (currentMedia && currentMedia.play) {
+                    currentMedia.currentTime = 0;
+                    currentMedia.play();
+                }
+            } else if (loopMode === 'all') {
+                // Go to next, or loop back to first
+                if (currentIndex < mediaQueue.length - 1) {
+                    nextMedia();
+                } else {
+                    loadMedia(0);
+                }
+            } else {
+                // Normal behavior - just go to next
+                nextMedia();
+            }
+        }
+
+        // Load settings on startup
+        function loadSettings() {
+            const savedLoop = localStorage.getItem('loopMode');
+            if (savedLoop) {
+                loopMode = savedLoop;
+                const btn = document.getElementById('loopBtn');
+                const icons = { off: '🔁', single: '🔂', all: '🔁' };
+                btn.textContent = `${icons[loopMode]} Loop: ${loopMode.charAt(0).toUpperCase() + loopMode.slice(1)}`;
+            }
+        }
+
+        // Enhanced Keyboard Controls
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            
+            switch (e.code) {
+                case 'Space':
+                    e.preventDefault();
+                    togglePlayPause();
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    previousMedia();
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    nextMedia();
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (currentMedia && currentMedia.volume !== undefined) {
+                        currentMedia.volume = Math.min(1, currentMedia.volume + 0.1);
+                        showNotification(`Volume: ${Math.round(currentMedia.volume * 100)}%`);
+                    }
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (currentMedia && currentMedia.volume !== undefined) {
+                        currentMedia.volume = Math.max(0, currentMedia.volume - 0.1);
+                        showNotification(`Volume: ${Math.round(currentMedia.volume * 100)}%`);
+                    }
+                    break;
+                case 'KeyM':
+                    e.preventDefault();
+                    toggleMute();
+                    break;
+                case 'KeyF':
+                    e.preventDefault();
+                    if (currentMedia && currentMedia.requestFullscreen) {
+                        currentMedia.requestFullscreen();
+                    }
+                    break;
+                case 'KeyL':
+                    e.preventDefault();
+                    toggleLoop();
+                    break;
+                case 'KeyT':
+                    e.preventDefault();
+                    toggleTheme();
+                    break;
+                case 'KeyZ':
+                    e.preventDefault();
+                    toggleMagnifier();
+                    break;
+                case 'Equal':
+                case 'NumpadAdd':
+                    e.preventDefault();
+                    if (magnifierActive) adjustZoom(0.5);
+                    break;
+                case 'Minus':
+                case 'NumpadSubtract':
+                    e.preventDefault();
+                    if (magnifierActive) adjustZoom(-0.5);
+                    break;
+            }
+        });
+
+        // Copy all the existing utility functions
+        function getBasename(path) {
+            return path.split('/').pop().split('\\').pop();
+        }
+
+        function getExtname(path) {
+            const name = getBasename(path);
+            const dot = name.lastIndexOf('.');
+            return dot === -1 ? '' : name.substring(dot).toLowerCase();
+        }
+
+        function createFileUrl(filePath) {
+            const parts = filePath.split('/');
+            const encodedParts = parts.map(part => {
+                if (part === '') return '';
+                return encodeURIComponent(part);
+            });
+            const encodedPath = encodedParts.join('/');
+            return `file://${encodedPath}`;
+        }
+
+        function getMediaType(filePath) {
+            const ext = getExtname(filePath);
+            if (['.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v', '.flv', '.wmv'].includes(ext)) return 'video';
+            if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.tiff'].includes(ext)) return 'image';
+            if (['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.wma'].includes(ext)) return 'audio';
+            return 'unknown';
+        }
+
+        function isSupportedFile(filePath) {
+            const ext = getExtname(filePath);
+            const supported = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v', '.flv', '.wmv',
+                             '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.tiff',
+                             '.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.wma'];
+            return supported.includes(ext);
+        }
+
+        async function selectFiles() {
+            try {
+                const files = await window.electronAPI.selectFiles();
+                if (files.length === 0) return;
+                addFilesToQueue(files);
+                showNotification(`Added ${files.length} files to queue`);
+            } catch (error) {
+                showNotification('Error selecting files: ' + error.message, 'warning');
+            }
+        }
+
+        async function selectFolder() {
+            try {
+                const files = await window.electronAPI.selectFolder();
+                if (files.length === 0) {
+                    showNotification('No media files found in folder', 'warning');
+                    return;
+                }
+                addFilesToQueue(files);
+                showNotification(`Added ${files.length} files from folder`);
+            } catch (error) {
+                showNotification('Error scanning folder: ' + error.message, 'warning');
+            }
+        }
+
+        function addFilesToQueue(files) {
+            files.forEach(file => {
+                const name = getBasename(file);
+                const type = getMediaType(file);
+                const url = createFileUrl(file);
+                
+                mediaQueue.push({
+                    name: name,
+                    path: file,
+                    type: type,
+                    url: url,
+                    id: Date.now() + Math.random(),
+                    duration: null,
+                    thumbnail: null
+                });
+            });
+            
+            updateDisplay();
+            generateThumbnails();
+            
+            if (currentIndex === -1 && mediaQueue.length > 0) {
+                loadMedia(0);
+            }
+        }
+
+        async function generateThumbnails() {
+            for (let i = 0; i < mediaQueue.length; i++) {
+                const item = mediaQueue[i];
+                if (item.type === 'video' && !item.thumbnail) {
+                    try {
+                        const thumbnail = await createVideoThumbnail(item.url);
+                        item.thumbnail = thumbnail;
+                        updateDisplay();
+                    } catch (error) {
+                        // Silently fail for thumbnails
+                    }
+                }
+            }
+        }
+
+        function createVideoThumbnail(videoUrl) {
+            return new Promise((resolve, reject) => {
+                const video = document.createElement('video');
+                video.crossOrigin = 'anonymous';
+                video.currentTime = 1;
+                
+                video.addEventListener('loadeddata', () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 160;
+                        canvas.height = 90;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL());
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+                
+                video.addEventListener('error', reject);
+                video.src = videoUrl;
+            });
+        }
+
+        function togglePlayPause() {
+            if (!currentMedia || !currentMedia.play) return;
+            
+            if (isPlaying) {
+                currentMedia.pause();
+            } else {
+                currentMedia.play();
+            }
+        }
+
+        function previousMedia() {
+            if (currentIndex > 0) {
+                loadMedia(currentIndex - 1);
+            }
+        }
+
+        function nextMedia() {
+            if (currentIndex < mediaQueue.length - 1) {
+                loadMedia(currentIndex + 1);
+            }
+        }
+
+        function toggleMute() {
+            if (!currentMedia || currentMedia.muted === undefined) return;
+            
+            currentMedia.muted = !currentMedia.muted;
+            document.getElementById('muteBtn').textContent = currentMedia.muted ? '🔇 Unmute' : '🔊 Mute';
+        }
+
+        function updatePlayPauseButton() {
+            const btn = document.getElementById('playPauseBtn');
+            btn.textContent = isPlaying ? '⏸️ Pause' : '▶️ Play';
+        }
+
+        function updateProgressInfo(currentTime, duration, extra = '') {
+            const info = document.getElementById('progressInfo');
+            if (currentTime !== null && duration) {
+                const current = formatTime(currentTime);
+                const total = formatTime(duration);
+                const percent = Math.round((currentTime / duration) * 100);
+                info.textContent = `${current} / ${total} (${percent}%) ${extra}`;
+            } else if (extra) {
+                info.textContent = extra;
+            } else {
+                info.textContent = '';
+            }
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function shuffleQueue() {
+            if (mediaQueue.length < 2) return;
+            
+            const currentItem = mediaQueue[currentIndex];
+            
+            for (let i = mediaQueue.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [mediaQueue[i], mediaQueue[j]] = [mediaQueue[j], mediaQueue[i]];
+            }
+            
+            currentIndex = mediaQueue.findIndex(item => item.id === currentItem.id);
+            updateDisplay();
+            showNotification('Queue shuffled');
+        }
+
+        function savePlaylist() {
+            if (mediaQueue.length === 0) {
+                showNotification('No items in queue to save', 'warning');
+                return;
+            }
+            
+            const playlist = {
+                name: `Playlist ${new Date().toLocaleDateString()}`,
+                created: new Date().toISOString(),
+                items: mediaQueue.map(item => ({
+                    name: item.name,
+                    path: item.path,
+                    type: item.type
+                }))
+            };
+            
+            const blob = new Blob([JSON.stringify(playlist, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `playlist_${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showNotification('Playlist saved successfully');
+        }
+
+        function loadPlaylist() {
+            document.getElementById('playlistInput').click();
+        }
+
+        function handlePlaylistFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const playlist = JSON.parse(e.target.result);
+                    clearQueue();
+                    
+                    const validItems = [];
+                    playlist.items.forEach(item => {
+                        validItems.push(item.path);
+                    });
+                    
+                    addFilesToQueue(validItems);
+                    showNotification(`✅ Loaded playlist: ${validItems.length} items`);
+                    
+                } catch (error) {
+                    showNotification('Error loading playlist file', 'warning');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function clearQueue() {
+            if (currentMedia && currentMedia.pause) currentMedia.pause();
+            mediaQueue = [];
+            currentIndex = -1;
+            currentMedia = null;
+            isPlaying = false;
+            document.getElementById('mediaDisplay').innerHTML = '<div class="no-media">🎵 No media selected<br><small>Use the controls above or drag & drop files to get started</small></div>';
+            document.getElementById('progressInfo').textContent = '';
+            updateDisplay();
+            showNotification('Queue cleared');
+        }
+
+        function updateDisplay() {
+            const list = document.getElementById('queueList');
+            const count = document.getElementById('queueCount');
+            
+            count.textContent = `(${mediaQueue.length} items)`;
+            
+            if (mediaQueue.length === 0) {
+                list.innerHTML = '<div style="text-align: center; opacity: 0.6; padding: 30px; font-style: italic;">No files loaded yet<br><small>Try dragging files here!</small></div>';
+                return;
+            }
+            
+            let html = '';
+            mediaQueue.forEach((item, i) => {
+                const current = i === currentIndex ? 'current' : '';
+                const icon = item.type === 'video' ? '🎬' : item.type === 'audio' ? '🎵' : '🖼️';
+                const thumbnail = item.thumbnail ? `<img src="${item.thumbnail}" class="thumbnail">` : '';
+                const duration = item.duration ? ` (${formatTime(item.duration)})` : '';
+                
+                html += `
+                    <div class="queue-item-enhanced ${current} ${item.type}" onclick="loadMedia(${i})" title="Click to play: ${item.name}">
+                        ${thumbnail}
+                        <div style="flex: 1;">
+                            <div style="font-weight: bold; font-size: 14px;">${icon} ${item.name}</div>
+                            <div style="font-size: 11px; opacity: 0.7; margin-top: 4px;">${item.type}${duration}</div>
+                        </div>
+                        <button onclick="event.stopPropagation(); removeFromQueue(${i})" 
+                                title="Remove from queue"
+                                style="background:var(--danger-color);color:white;border:none;padding:8px 12px;border-radius:6px;font-size:11px;font-weight:600;transition:var(--transition);">
+                            Remove
+                        </button>
+                    </div>
+                `;
+            });
+            list.innerHTML = html;
+        }
+
+        function removeFromQueue(index) {
+            const item = mediaQueue[index];
+            mediaQueue.splice(index, 1);
+            
+            if (currentIndex >= index) currentIndex--;
+            if (mediaQueue.length === 0) {
+                clearQueue();
+            } else if (currentIndex < 0 && mediaQueue.length > 0) {
+                loadMedia(0);
+            } else {
+                updateDisplay();
+            }
+            showNotification(`Removed: ${item.name}`);
+        }
+
+        // Initialize everything when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTheme();
+            loadSettings();
+            setupDragAndDrop();
+            initMagnifier();
+            showNotification('Enhanced Media Player Pro with Magnifier loaded! 🎉');
+        });
+    </script>
+</body>
+</html>
