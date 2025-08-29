@@ -15,11 +15,18 @@
     "clean": "rimraf dist build node_modules/.cache",
     "postinstall": "echo \"📦 Enhanced Media Player dependencies installed successfully\""
   },
-  "keywords": ["electron", "media", "player", "video", "audio", "playlist"],
+  "keywords": [
+    "electron",
+    "media",
+    "player",
+    "video",
+    "audio",
+    "playlist"
+  ],
   "author": "Mike",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^25.0.0",
+    "electron": "^37.4.0",
     "electron-builder": "^24.0.0"
   },
   "optionalDependencies": {
@@ -33,7 +40,7 @@
     },
     "files": [
       "main.js",
-      "preload.js", 
+      "preload.js",
       "index.html",
       "styles.css"
     ],
