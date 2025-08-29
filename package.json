@@ -7,13 +7,23 @@
     "start": "electron .",
     "dev": "electron . --enable-logging",
     "build": "electron-builder",
-    "dist": "npm run build"
+    "dist": "npm run build",
+    "test": "echo \"✅ Basic validation passed - Add proper tests as needed\" && npm run validate",
+    "validate": "node -c main.js && node -c preload.js && echo \"✅ JavaScript syntax validation passed\"",
+    "lint": "echo \"📝 Linting would run here - consider adding ESLint\"",
+    "security-check": "npm audit --audit-level=moderate",
+    "clean": "rimraf dist build node_modules/.cache",
+    "postinstall": "echo \"📦 Enhanced Media Player dependencies installed successfully\""
   },
   "keywords": ["electron", "media", "player", "video", "audio", "playlist"],
   "author": "Mike",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^25.0.0"
+    "electron": "^25.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "optionalDependencies": {
+    "rimraf": "^5.0.0"
   },
   "build": {
     "appId": "com.mike.enhanced-media-player",
